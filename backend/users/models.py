@@ -17,10 +17,10 @@ class Role(models.Model):
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
-    phone_number = models.CharField(max_length=15, blank=True)
-    national_id = models.CharField(max_length=20, null=True, blank=True)
-    first_name = models.CharField(max_length=20, null=True, blank=True)
-    last_name = models.CharField(max_length=20, null=True, blank=True)
+    phone_number = models.CharField(max_length=15, unique=True)
+    national_id = models.CharField(max_length=20, unique=True)
+    first_name = models.CharField(max_length=20)
+    last_name = models.CharField(max_length=20)
     
     # Link to the Dynamic Role
     role = models.ForeignKey(
@@ -30,6 +30,8 @@ class User(AbstractUser):
         blank=True, 
         related_name="personnel"
     )
+
+    USERNAME_FIELD = 'username'
 
     REQUIRED_FIELDS=[
         "email",
