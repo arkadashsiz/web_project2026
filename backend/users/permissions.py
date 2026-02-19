@@ -74,7 +74,7 @@ class IsAccountOwner(permissions.BasePermission):
         # Write permissions are only allowed to the owner of the account.
         return obj == request.user
 
-class IsAccountOwnerOrAdmin(permissions.BasePermission):
+class IsAccountOwner(permissions.BasePermission):
     """
     Allows a user to edit their own profile.
     Allows Admins/Chief (Level >= 90) to edit ANY profile.
@@ -83,9 +83,12 @@ class IsAccountOwnerOrAdmin(permissions.BasePermission):
         # 1. Check if user is the owner
         if obj == request.user:
             return True
-        
-        # 2. Check if user is Chief (90) or Admin
-        if request.user.role and request.user.role.access_level >= 90:
-            return True
             
         return False
+
+class IsSuperUser(permissions.BasePermission):
+    """
+    Custom permission to only allow access to superusers.
+    """
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_superuser)
