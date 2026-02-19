@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Role
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 User = get_user_model()
 
@@ -42,3 +43,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             role=civilian_role
         )
         return user
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        # Add custom claims to the JWT payload
+        token['username'] = user.username
+        token['role'] = user.role.name if user.role else 'None'
+        token['first_name'] = user.first_name
+        token['last_name'] = user.last_name
+        token['email']= user.email
+
+        return token
