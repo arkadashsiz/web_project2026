@@ -1,7 +1,7 @@
 import { useState, useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-
+import axios from "../api/axios";
 function Login() {
     const [identifier, setIdentifier] = useState("");
     const [password, setPassword] = useState("");
@@ -12,20 +12,12 @@ function Login() {
         e.preventDefault();
 
         try {
-            const response = await fetch("http://127.0.0.1:8000/api/login/", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ identifier, password }),
+            const response = await axios.post("login/", {
+                identifier,
+                password,
             });
-
-            if (!response.ok) {
-                throw new Error("Login failed");
-            }
-
-            const data = await response.json();
-            login(data.token, data.roles);
+            
+            login(response.data.token, response.data.roles);
             navigate("/dashboard");
 
         } catch (error) {
