@@ -39,6 +39,13 @@ class Case(models.Model):
         related_name="assigned_cases",
         blank=True
     )
+
+    complainants = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='filed_cases',
+        blank=True,
+        verbose_name="Complainants"
+    )
     
     # Involved Parties (Civilians)
     suspects = models.ManyToManyField(
@@ -53,34 +60,50 @@ class Case(models.Model):
 
 class Complaint(models.Model):
     class Status(models.TextChoices):
-        PENDING_REVIEW = 'PENDING', 'Pending Review'
-        APPROVED = 'APPROVED', 'Approved (Case Created)'
-        REJECTED = 'REJECTED', 'Rejected'
-        ARCHIVED = 'ARCHIVED', 'Archived (Rejected 3 times)'
+        PENDING_CADET = 'PENDING_CADET', 'Pending Cadet Review'
+        PENDING_OFFICER = 'PENDING_OFFICER', 'Pending Officer Review'
+        RETURNED_TO_COMPLAINANT = 'RETURNED_TO_COMPLAINANT', 'Returned to Complainant (Defect)'
+        RETURNED_TO_CADET = 'RETURNED_TO_CADET', 'Returned to Cadet (Defect)'
+        APPROVED = 'APPROVED', 'Approved (Case Created/Joined)'
+        ARCHIVED = 'ARCHIVED', 'Archived (Nullified - 3 Strikes)'
 
+
+    cadet_message = models.TextField(verbose_name="Cadet's Rejection Message", blank=True, null=True)
     complainant = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='complaints')
     details = models.TextField(verbose_name="Complaint Details")
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING_REVIEW)
+    status = models.CharField(max_length=200, choices=Status.choices, default=Status.PENDING_CADET)
     rejection_count = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     
     # Once approved, this links to the official Case
-    case = models.OneToOneField(Case, on_delete=models.SET_NULL, null=True, blank=True, related_name='originating_complaint')
+    target_case = models.ForeignKey(
+        Case, 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True, 
+        related_name='linked_complaints',
+        help_text="If this complaint belongs to an existing case, link it here."
+    )
 
     def __str__(self):
         return f"Complaint by {self.complainant.username} on {self.created_at.strftime('%Y-%m-%d')}"
 
 class CrimeSceneReport(models.Model):
+    class Status(models.TextChoices):
+        PENDING_SUPERIOR = 'PENDING_SUPERIOR', 'Pending Superior Approval'
+        APPROVED = 'APPROVED', 'Approved (Case Created)'
+        REJECTED = 'REJECTED', 'Rejected'
+
     reporting_officer = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.PROTECT, 
         related_name='crime_reports',
-        limit_choices_to={'roles__access_level__gte': 20} # Officer or higher
+        limit_choices_to={'role__access_level__gte': 20} # Officer or higher
     )
     scene_datetime = models.DateTimeField()
     location_details = models.CharField(max_length=255)
     report_details = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=25, choices=Status.choices, default=Status.PENDING_SUPERIOR)
     
     # Once approved, this links to the official Case
     case = models.OneToOneField(Case, on_delete=models.SET_NULL, null=True, blank=True, related_name='originating_report')
