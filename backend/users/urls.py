@@ -6,13 +6,15 @@ from .views import (
     UserViewSet, 
     RoleViewSet, 
     UserRegistrationView, 
-    CustomTokenObtainPairView
+    CustomTokenObtainPairView,
+    RoleRequestViewSet
 )
 
 # Initialize the DefaultRouter for ViewSets
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'roles', RoleViewSet, basename='role')
+router.register(r'role-requests', RoleRequestViewSet, basename='role-request')
 
 urlpatterns = [
     # ==========================================

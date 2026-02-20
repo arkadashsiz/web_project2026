@@ -39,7 +39,7 @@ class Trial(models.Model):
         MISTRIAL = 'MISTRIAL', 'Mistrial'
 
     # One trial per CaseSuspect entry
-    case_suspect = models.OneToOneField('cases.CaseSuspect', on_delete=models.CASCADE, related_name='trial')
+    case_suspect = models.OneToOneField('cases.CaseSuspect', on_delete=models.CASCADE, related_name='trial', null=True, blank=True )
     judge = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='trials_judged')
     
     date_started = models.DateField()
