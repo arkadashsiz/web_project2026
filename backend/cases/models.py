@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 class Case(models.Model):
     class CrimeLevel(models.IntegerChoices):
@@ -52,7 +53,8 @@ class Case(models.Model):
         settings.AUTH_USER_MODEL,
         through='CaseSuspect',
         related_name="suspected_in_cases",
-        blank=True
+        blank=True,
+        through_fields=('case', 'suspect') 
     )
 
     def __str__(self):
@@ -113,21 +115,65 @@ class CrimeSceneReport(models.Model):
 
 class CaseSuspect(models.Model):
     class Status(models.TextChoices):
+        # Initial Stages
         WANTED = 'WANTED', 'Wanted'
-        HIGHLY_WANTED = 'HIGHLY_WANTED', 'Highly Wanted'
-        IN_CUSTODY = 'IN_CUSTODY', 'In Custody'
+        HIGHLY_WANTED = 'HIGHLY_WANTED', 'Highly Wanted (Critical)'
+        
+        # Arrest & Investigation (Chapter 4.5)
+        IN_CUSTODY = 'IN_CUSTODY', 'In Custody (Interrogation Pending)'
+        PENDING_SERGEANT_REVIEW = 'PENDING_SGT', 'Pending Sergeant Review'
+        
+        # Outcomes of Investigation
+        RELEASED_INSUFFICIENT_EVIDENCE = 'RELEASED_EVIDENCE', 'Released (Insufficient Evidence)'
+        SENT_TO_TRIAL = 'SENT_TO_TRIAL', 'Sent to Trial'
+        
+        # Logistics (Chapter 4.9)
         RELEASED_ON_BAIL = 'BAIL', 'Released on Bail'
+        
+        # Trial Outcomes (Chapter 4.6)
         CONVICTED = 'CONVICTED', 'Convicted'
         ACQUITTED = 'ACQUITTED', 'Acquitted'
 
-    case = models.ForeignKey(Case, on_delete=models.CASCADE)
+    case = models.ForeignKey('Case', on_delete=models.CASCADE)
     suspect = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.WANTED)
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.WANTED)
+    
+    # Tracking Dates (For Chapter 4.7 Formula)
     date_marked_wanted = models.DateTimeField(auto_now_add=True)
+    date_arrested = models.DateTimeField(null=True, blank=True)
+    
+    # Interrogation Data (Chapter 4.5)
+    detective_notes = models.TextField(blank=True, help_text="Interrogation summary by Lead Detective")
+    detective_score = models.PositiveIntegerField(default=0, help_text="Guilt probability score (1-10)")
+    
+    sergeant_notes = models.TextField(blank=True, help_text="Review notes by Sergeant")
+    sergeant_score = models.PositiveIntegerField(default=0, help_text="Validation score (1-10)")
+    
+    # Hierarchy Approval (For Critical Crimes)
+    captain_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        null=True, blank=True, 
+        on_delete=models.SET_NULL,
+        related_name='captain_approvals'
+    )
+    chief_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        null=True, blank=True, 
+        on_delete=models.SET_NULL,
+        related_name='chief_approvals'
+    )
 
     class Meta:
         unique_together = ('case', 'suspect')
         verbose_name_plural = "Case Suspects"
 
     def __str__(self):
-        return f"{self.suspect.username} is {self.get_status_display()} in {self.case}"
+        return f"{self.suspect.username} - {self.get_status_display()}"
+
+    @property
+    def days_wanted(self):
+        """Calculates D_i for Chapter 4.7 Most Wanted Formula"""
+        if self.status not in [self.Status.WANTED, self.Status.HIGHLY_WANTED]:
+            return 0
+        delta = timezone.now() - self.date_marked_wanted
+        return delta.days
