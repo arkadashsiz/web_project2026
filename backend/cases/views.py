@@ -17,13 +17,11 @@ class ComplaintViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # 1. Prevent Swagger Schema generator crash
         if getattr(self, "swagger_fake_view", False) or not self.request.user.is_authenticated:
             return Complaint.objects.none()
 
         user = self.request.user
         
-        # 2. Strict Data Isolation based on Hierarchy
         if user.access_level == 0:  # Civilian
             return Complaint.objects.filter(complainant=user)
         elif user.access_level == 10:  # Cadet
@@ -40,7 +38,6 @@ class ComplaintViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user
         
-        # 3-Strike Rule (Global): Block user if they have 3 archived complaints
         archived_count = Complaint.objects.filter(
             complainant=user, 
             status=Complaint.Status.ARCHIVED
@@ -49,7 +46,6 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         if archived_count >= 3:
             raise PermissionDenied("You have reached the maximum number of archived complaints and are blocked from submitting new ones.")
 
-        # Auto-assign complainant and set status to Cadet queue
         serializer.save(complainant=user, status=Complaint.Status.PENDING_CADET)
 
     @extend_schema(request=ComplaintReviewSerializer, responses={200: ComplaintSerializer})
@@ -73,7 +69,6 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             if action_type == 'reject':
                 complaint.cadet_message = error_message
                 complaint.rejection_count += 1
-                # 3-Strike Rule (Local): Archive after 3 rejections
                 if complaint.rejection_count >= 3:
                     complaint.status = Complaint.Status.ARCHIVED
                 else:
@@ -88,24 +83,19 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "Officers can only review pending officer complaints."}, status=status.HTTP_400_BAD_REQUEST)
             
             if action_type == 'reject':
-                # Sent back down to Cadet, NOT civilian
                 complaint.status = Complaint.Status.RETURNED_TO_CADET
                 complaint.cadet_message = error_message
             elif action_type == 'approve':
-                # Transaction ensures case creation and complaint approval succeed together
                 with transaction.atomic():
                     complaint.status = Complaint.Status.APPROVED
                     
-                    # Create the Case
                     new_case = Case.objects.create(
                         title=f"Case for Complaint #{complaint.id}",
                         description=complaint.details,
                         investigating_officer=user
                     )
-                    # Add complainant to ManyToMany field
                     new_case.complainants.add(complaint.complainant)
                     
-                    # Link Case back to Complaint
                     complaint.target_case = new_case
         else:
             return Response({"detail": "You do not have permission to review complaints."}, status=status.HTTP_403_FORBIDDEN)
@@ -122,7 +112,6 @@ class CrimeSceneReportViewSet(viewsets.ModelViewSet):
         if getattr(self, "swagger_fake_view", False) or not self.request.user.is_authenticated:
             return CrimeSceneReport.objects.none()
             
-        # Civilians (0) and Cadets (10) cannot see Crime Scene Reports
         if self.request.user.access_level < 20:
             return CrimeSceneReport.objects.none()
             
@@ -134,7 +123,6 @@ class CrimeSceneReportViewSet(viewsets.ModelViewSet):
         if user.access_level < 20:
             raise PermissionDenied("Only officers can submit crime scene reports.")
 
-        # Chief Auto-Approval Bypass
         if user.access_level == 90:
             with transaction.atomic():
                 report = serializer.save(
@@ -151,7 +139,6 @@ class CrimeSceneReportViewSet(viewsets.ModelViewSet):
                 report.related_case = new_case
                 report.save()
         else:
-            # Normal Officer Submission
             serializer.save(
                 reporting_officer=user, 
                 status=CrimeSceneReport.Status.PENDING_SUPERIOR
@@ -164,7 +151,6 @@ class CrimeSceneReportViewSet(viewsets.ModelViewSet):
         report = self.get_object()
         user = request.user
         
-        # Strict hierarchy check: Reviewer must strictly outrank the reporter
         if user.access_level <= report.reporting_officer.access_level:
             return Response(
                 {"detail": "Review must be conducted by a superior officer with a higher rank."}, 
@@ -210,8 +196,6 @@ class CaseViewSet(viewsets.ModelViewSet):
         user = self.request.user
         
         if user.access_level == 0:
-            # Civilians can only see Cases where they are listed as a complainant
             return Case.objects.filter(complainants=user)
         else:
-            # Police forces can see all cases
             return Case.objects.all()

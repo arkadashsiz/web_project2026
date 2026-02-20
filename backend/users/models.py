@@ -5,7 +5,7 @@ class Role(models.Model):
     name = models.CharField(max_length=50, unique=True)
     description = models.TextField(blank=True)
     
-    # 100 = Chief, 80 = Captain, 60 = Sergeant, 40 = Detective, 20 = Officer, 10 = Cadet
+    # 10 = Cadet, 20 = Officer, 40 = Detective, 60 = Sergeant, 80 = Captain, 100 = Chief
     access_level = models.PositiveIntegerField(
         default=10, 
         help_text="Higher number = Higher Authority. Used for permission checks."
@@ -22,7 +22,6 @@ class User(AbstractUser):
     first_name = models.CharField(max_length=20)
     last_name = models.CharField(max_length=20)
     
-    # Link to the Dynamic Role
     role = models.ForeignKey(
         Role, 
         on_delete=models.SET_NULL, 

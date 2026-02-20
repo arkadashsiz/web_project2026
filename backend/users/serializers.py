@@ -46,19 +46,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return user
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    # Add the optional fields so DRF recognizes them
     email = serializers.EmailField(required=False)
     national_id = serializers.CharField(required=False)
     phone_number = serializers.CharField(required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Make the default username field optional
         self.fields[self.username_field].required = False
 
     @classmethod
     def get_token(cls, user):
-        # Embed custom data into the JWT payload
         token = super().get_token(user)
         token['username'] = user.username
         
@@ -74,7 +71,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         password = attrs.get('password')
         
-        # Extract potential identifiers
         username_input = attrs.get('username')
         email_input = attrs.get('email')
         national_id_input = attrs.get('national_id')
@@ -85,7 +81,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         user = None
 
-        # 1. Check if explicit keys were sent
         if email_input:
             user = User.objects.filter(email__iexact=email_input).first()
         elif national_id_input:
@@ -99,7 +94,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'You must provide a username, email, national_id, or phone_number.'
             )
 
-        # 3. Verify user exists and password matches
         if user and user.check_password(password):
             if not user.is_active:
                 raise exceptions.AuthenticationFailed('User account is disabled.')
@@ -107,7 +101,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             self.user = user
             token = self.get_token(user)
             
-            # 4. Prepare the final JSON response
             data = {
                 'refresh': str(token),
                 'access': str(token.access_token),

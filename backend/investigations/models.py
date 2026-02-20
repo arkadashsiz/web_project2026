@@ -3,7 +3,6 @@ from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 class DetectiveBoard(models.Model):
-    # Note the string notation 'cases.Case'
     case = models.OneToOneField('cases.Case', on_delete=models.CASCADE, related_name='detective_board')
     board_data = models.JSONField(default=dict, blank=True, help_text="Stores positions of evidence, links, and notes.")
     last_updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
@@ -15,7 +14,6 @@ class Interrogation(models.Model):
         APPROVED = 'APPROVED', 'Approved'
         REJECTED = 'REJECTED', 'Rejected'
 
-    # Note the string notation 'cases.CaseSuspect'
     case_suspect = models.ForeignKey('cases.CaseSuspect', on_delete=models.CASCADE, related_name='interrogations')
     interrogating_sergeant = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
@@ -41,7 +39,6 @@ class Interrogation(models.Model):
         limit_choices_to={'roles__access_level__gte': 80}
     )
     
-    # For critical crimes only
     chief_approval = models.CharField(max_length=10, choices=ApprovalStatus.choices, null=True, blank=True)
     chief_approver = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
@@ -59,7 +56,6 @@ class Trial(models.Model):
         GUILTY = 'GUILTY', 'Guilty'
         NOT_GUILTY = 'NOT_GUILTY', 'Not Guilty'
 
-    # Note the string notation 'cases.Case'
     case = models.OneToOneField('cases.Case', on_delete=models.PROTECT, related_name='trial')
     judge = models.ForeignKey(
         settings.AUTH_USER_MODEL, 

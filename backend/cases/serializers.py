@@ -70,7 +70,6 @@ class CrimeSceneReportSerializer(serializers.ModelSerializer):
             'scene_datetime', 'location_details', 'report_details', 
             'status', 'case', 'created_at'
         ]
-        # STRICT SECURITY: Superiors and the system manage approval and case links.
         read_only_fields = [
             'reporting_officer', 
             'status', 
@@ -112,7 +111,6 @@ class CaseSerializer(serializers.ModelSerializer):
     """
     Comprehensive view of a Case, including nested suspects.
     """
-    # Nested serializer to show details of suspects instead of just IDs
     suspects_list = CaseSuspectSerializer(source='casesuspect_set', many=True, read_only=True)
     lead_detective_username = serializers.ReadOnlyField(source='lead_detective.username')
     
@@ -123,5 +121,4 @@ class CaseSerializer(serializers.ModelSerializer):
             'lead_detective', 'lead_detective_username', 'assigned_personnel', 
             'complainants', 'suspects_list', 'creation_date', 'last_updated'
         ]
-        # Status and timestamps are strictly managed by system workflows
         read_only_fields = ['status', 'creation_date', 'last_updated']

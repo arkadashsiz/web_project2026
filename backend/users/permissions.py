@@ -68,10 +68,6 @@ class IsAccountOwner(permissions.BasePermission):
     Assumes the model instance has an attribute `id` matching the user.
     """
     def has_object_permission(self, request, view, obj):
-        # Read permissions are allowed to any authenticated user? 
-        # Usually, for User profiles, we strictly limit this.
-        
-        # Write permissions are only allowed to the owner of the account.
         return obj == request.user
 
 class IsAccountOwner(permissions.BasePermission):
@@ -80,7 +76,6 @@ class IsAccountOwner(permissions.BasePermission):
     Allows Admins/Chief (Level >= 90) to edit ANY profile.
     """
     def has_object_permission(self, request, view, obj):
-        # 1. Check if user is the owner
         if obj == request.user:
             return True
             
