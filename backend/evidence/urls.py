@@ -4,7 +4,8 @@ from .views import (
     TestimonyViewSet,
     BiologicalViewSet,
     VehicleViewSet,
-    IDDocumentViewSet
+    IDDocumentViewSet,
+    WitnessStatementViewSet
 )
 
 # Initialize the DefaultRouter
@@ -14,6 +15,7 @@ router = DefaultRouter()
 router.register(r'testimonies', TestimonyViewSet, basename='testimony')
 router.register(r'biological', BiologicalViewSet, basename='biological')
 router.register(r'vehicles', VehicleViewSet, basename='vehicle')
+router.register(r'witness-statements', WitnessStatementViewSet, basename='witness-statement')
 router.register(r'id-documents', IDDocumentViewSet, basename='id-document')
 
 # The router automatically generates all standard REST API routes

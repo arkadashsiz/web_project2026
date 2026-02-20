@@ -1,6 +1,7 @@
 from rest_framework import permissions
 from users.permissions import IsCommandStaff
 
+
 class IsEvidenceActive(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
@@ -12,6 +13,7 @@ class IsEvidenceActive(permissions.BasePermission):
             if getattr(obj.case, 'status', None) in locked_statuses:
                 return False
         return True
+
 
 class IsCollectorOrCaseLead(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
@@ -25,21 +27,27 @@ class IsCollectorOrCaseLead(permissions.BasePermission):
             return True
         return False
 
+
 class IsWitnessOwner(permissions.BasePermission):
-    """
-    Ensures Civilians can ONLY view testimonies where they are the witness.
-    Allows Police to bypass this check (as police rights are handled by other permissions).
-    """
     def has_object_permission(self, request, view, obj):
-        # Police personnel bypass this specific civilian check
         if request.user.access_level >= 20:
             return True
-            
+
         if not hasattr(obj, 'witness'):
             return False
 
-        # If it's the civilian witness, strictly enforce READ-ONLY
         if obj.witness == request.user:
             return request.method in permissions.SAFE_METHODS
-            
+
         return False
+
+from users.permissions import IsCommandStaff
+
+
+class IsOwnerOrPolice(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if IsCommandStaff().has_permission(request, view) or getattr(request.user, "access_level", 0) >= 20:
+            return True
+        return obj.submitted_by == request.user
+    
+

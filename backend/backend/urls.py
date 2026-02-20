@@ -29,7 +29,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/users/', include('users.urls')), 
     path('api/cases/', include('cases.urls')),
-    # path('api/evidence/', include('evidence.urls')),
+    path('api/evidence/', include('evidence.urls')),
     # path('api/investigations/', include('investigations.urls')),
     # path('api/logistics/', include('logistics.urls')), 
 ]
