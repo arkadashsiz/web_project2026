@@ -11,6 +11,7 @@ class Evidence(models.Model):
         ID_DOCUMENT = 'ID_DOCUMENT', 'ID Document'
         OTHER = 'OTHER', 'Other'
 
+    # Note the string notation 'cases.Case' to link across apps
     case = models.ForeignKey('cases.Case', on_delete=models.CASCADE, related_name='evidence')
     title = models.CharField(max_length=255)
     description = models.TextField()
