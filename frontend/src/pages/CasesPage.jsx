@@ -36,6 +36,10 @@ export default function CasesPage() {
     resubmitSeverity: 1,
   })
   const [selectedCaseTitle, setSelectedCaseTitle] = useState('')
+  const [sceneMsg, setSceneMsg] = useState('')
+  const [sceneMsgType, setSceneMsgType] = useState('success')
+  const [sceneDesk, setSceneDesk] = useState({ caseId: '', addComplainantUserId: '', denyNote: '' })
+  const [selectedSceneReport, setSelectedSceneReport] = useState(null)
 
   const complaintQueue = useMemo(
     () =>
@@ -45,8 +49,19 @@ export default function CasesPage() {
     [cases]
   )
   const caseList = useMemo(
-    () =>
-      cases.filter((c) => c.source !== 'complaint' || !c.complaint_submission || c.complaint_submission.stage === 'formed'),
+    () => {
+      const complaintCases = cases.filter(
+        (c) => c.source === 'complaint' && c.complaint_submission && c.complaint_submission.stage === 'formed'
+      )
+      const sceneCases = cases.filter(
+        (c) => c.source === 'scene' && !['under_review', 'draft', 'void'].includes(c.status)
+      )
+      return [...complaintCases, ...sceneCases]
+    },
+    [cases]
+  )
+  const sceneQueue = useMemo(
+    () => cases.filter((c) => c.source === 'scene' && c.status === 'under_review'),
     [cases]
   )
 
@@ -162,6 +177,40 @@ export default function CasesPage() {
     setWorkflowMsg(`Selected complaint #${c.id} for workflow desk.`)
   }
 
+  const useInSceneDesk = (c) => {
+    setSceneDesk({ ...sceneDesk, caseId: String(c.id) })
+    setSelectedSceneReport(c)
+    setSceneMsgType('success')
+    setSceneMsg(`Selected scene case #${c.id}.`)
+  }
+
+  const callScene = async (fn) => {
+    setSceneMsg('')
+    try {
+      await fn()
+      setSceneMsgType('success')
+      setSceneMsg('Scene action completed.')
+      load()
+    } catch (err) {
+      setSceneMsgType('error')
+      setSceneMsg(err?.response?.data?.detail || 'Scene action failed.')
+    }
+  }
+
+  const approveScene = () => callScene(() =>
+    api.post(`/cases/cases/${sceneDesk.caseId}/approve_scene/`, {})
+  )
+
+  const addSceneComplainant = () => callScene(() =>
+    api.post(`/cases/cases/${sceneDesk.caseId}/add_scene_complainant/`, {
+      user_id: Number(sceneDesk.addComplainantUserId),
+    })
+  )
+
+  const denyScene = () => callScene(() =>
+    api.post(`/cases/cases/${sceneDesk.caseId}/deny_scene/`, { note: sceneDesk.denyNote })
+  )
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <div className="two-col">
@@ -222,111 +271,192 @@ export default function CasesPage() {
           {error && <p className="error">{error}</p>}
         </div>
 
-        <div className="panel">
-          <h3>Complaints Queue (Before Officer Final Approval)</h3>
-          <ul className="list">
-            {complaintQueue.map((c) => (
-              <li key={c.id}>
-                <div>
-                  <strong>Complaint #{c.id}</strong> {c.title} | status: {c.status}
-                  <button type="button" style={{ marginLeft: 8 }} onClick={() => useInDesk(c)}>Use in desk</button>
-                </div>
-                {c.complaint_submission && (
-                  <div style={{ marginTop: 6, fontSize: 13 }}>
-                    stage: {c.complaint_submission.stage} | attempts: {c.complaint_submission.attempt_count}
-                    {c.complaint_submission.last_error_message && (
-                      <div><strong>last error:</strong> {c.complaint_submission.last_error_message}</div>
-                    )}
-                    {c.complaint_submission.intern_note && <div>cadet note: {c.complaint_submission.intern_note}</div>}
-                    {c.complaint_submission.officer_note && <div>officer note: {c.complaint_submission.officer_note}</div>}
-                    <div>
-                      complainants: {c.complainants?.map((x) => `(${x.id}) user:${x.user} ${x.status}`).join(' | ') || '-'}
-                    </div>
+        {mode === 'complaint' ? (
+          <div className="panel">
+            <h3>Complaints Queue (Before Officer Final Approval)</h3>
+            <ul className="list">
+              {complaintQueue.map((c) => (
+                <li key={c.id}>
+                  <div>
+                    <strong>Complaint #{c.id}</strong> {c.title} | status: {c.status}
+                    <button type="button" style={{ marginLeft: 8 }} onClick={() => useInDesk(c)}>Use in desk</button>
                   </div>
-                )}
-              </li>
-            ))}
-            {complaintQueue.length === 0 && <li>No pending complaints.</li>}
-          </ul>
-        </div>
-      </div>
-
-      <div className="panel">
-        <h3>Case List (Formed Cases)</h3>
-        <ul className="list">
-          {caseList.map((c) => (
-            <li key={c.id}>
-              <strong>Case #{c.id}</strong> {c.title} | source: {c.source} | status: {c.status}
-              {c.source === 'complaint' && <span> | formed by officer approval</span>}
-            </li>
-          ))}
-          {caseList.length === 0 && <li>No formed cases yet.</li>}
-          </ul>
-        </div>
-
-      <div className="panel">
-        <h3>Complaint Workflow Desk</h3>
-        {workflow.caseId && (
-          <p style={{ margin: 0 }}>
-            <strong>Selected:</strong> complaint #{workflow.caseId} {selectedCaseTitle ? `- ${selectedCaseTitle}` : ''}
-          </p>
+                  {c.complaint_submission && (
+                    <div style={{ marginTop: 6, fontSize: 13 }}>
+                      stage: {c.complaint_submission.stage} | attempts: {c.complaint_submission.attempt_count}
+                      {c.complaint_submission.last_error_message && (
+                        <div><strong>last error:</strong> {c.complaint_submission.last_error_message}</div>
+                      )}
+                      {c.complaint_submission.intern_note && <div>cadet note: {c.complaint_submission.intern_note}</div>}
+                      {c.complaint_submission.officer_note && <div>officer note: {c.complaint_submission.officer_note}</div>}
+                      <div>
+                        complainants: {c.complainants?.map((x) => `(${x.id}) user:${x.user} ${x.status}`).join(' | ') || '-'}
+                      </div>
+                    </div>
+                  )}
+                </li>
+              ))}
+              {complaintQueue.length === 0 && <li>No pending complaints.</li>}
+            </ul>
+          </div>
+        ) : (
+          <div className="panel">
+            <h3>Scene Reports Queue (Awaiting One Superior Approval)</h3>
+            <ul className="list">
+              {sceneQueue.map((c) => (
+                <li key={c.id}>
+                  <strong>Scene #{c.id}</strong> {c.title} | status: {c.status}
+                  <button type="button" style={{ marginLeft: 8 }} onClick={() => useInSceneDesk(c)}>Use in scene desk</button>
+                  <div style={{ fontSize: 13, marginTop: 4 }}>
+                    reported at: {c.scene_reported_at || '-'} | witnesses: {c.witnesses?.length || 0} | complainants: {c.complainants?.length || 0}
+                  </div>
+                </li>
+              ))}
+              {sceneQueue.length === 0 && <li>No scene reports waiting approval.</li>}
+            </ul>
+          </div>
         )}
-        <p style={{ margin: 0, color: '#546176' }}>
-          Base users/complainants: submit and resubmit. Cadet: complainant validation + cadet review. Officer: final review.
-        </p>
-        <input placeholder="Case ID" value={workflow.caseId} onChange={(e) => setWorkflow({ ...workflow, caseId: e.target.value })} />
-
-        <div className="two-col">
-          <div style={{ display: 'grid', gap: 8 }}>
-            {isCadet && (
-              <>
-                <h4>Cadet Actions</h4>
-                <input
-                  placeholder="Complainant Record ID"
-                  value={workflow.complainantRecordId}
-                  onChange={(e) => setWorkflow({ ...workflow, complainantRecordId: e.target.value })}
-                />
-                <select value={workflow.cadetApproved ? 'true' : 'false'} onChange={(e) => setWorkflow({ ...workflow, cadetApproved: e.target.value === 'true' })}>
-                  <option value="true">Approve</option>
-                  <option value="false">Reject</option>
-                </select>
-                <textarea placeholder="Cadet note / mandatory error message on reject" value={workflow.cadetNote} onChange={(e) => setWorkflow({ ...workflow, cadetNote: e.target.value })} />
-                <button type="button" onClick={cadetReviewComplainant}>Save Complainant Review</button>
-                <button type="button" onClick={cadetFinalReview}>Cadet Final Review</button>
-              </>
-            )}
-
-            {!isCadet && <p style={{ margin: 0, color: '#546176' }}>Cadet actions are hidden for your role.</p>}
-          </div>
-
-          <div style={{ display: 'grid', gap: 8 }}>
-            {isOfficer && (
-              <>
-                <h4>Officer Actions</h4>
-                <select value={workflow.officerApproved ? 'true' : 'false'} onChange={(e) => setWorkflow({ ...workflow, officerApproved: e.target.value === 'true' })}>
-                  <option value="true">Approve Case Formation</option>
-                  <option value="false">Return To Cadet</option>
-                </select>
-                <textarea placeholder="Officer note" value={workflow.officerNote} onChange={(e) => setWorkflow({ ...workflow, officerNote: e.target.value })} />
-                <button type="button" onClick={officerFinalReview}>Submit Officer Review</button>
-              </>
-            )}
-
-            <h4>Complainant Resubmit</h4>
-            <input placeholder="Updated title" value={workflow.resubmitTitle} onChange={(e) => setWorkflow({ ...workflow, resubmitTitle: e.target.value })} />
-            <textarea placeholder="Updated description" value={workflow.resubmitDescription} onChange={(e) => setWorkflow({ ...workflow, resubmitDescription: e.target.value })} />
-            <select value={workflow.resubmitSeverity} onChange={(e) => setWorkflow({ ...workflow, resubmitSeverity: Number(e.target.value) })}>
-              <option value={1}>Level 3</option>
-              <option value={2}>Level 2</option>
-              <option value={3}>Level 1</option>
-              <option value={4}>Critical</option>
-            </select>
-            <button type="button" onClick={complainantResubmit}>Submit Resubmission</button>
-          </div>
-        </div>
-
-        {workflowMsg && <p className={workflowMsgType === 'error' ? 'error' : ''}>{workflowMsg}</p>}
       </div>
+
+      {mode === 'complaint' && (
+        <>
+          <div className="panel">
+            <h3>Case List (Formed Cases)</h3>
+            <ul className="list">
+              {caseList.map((c) => (
+                <li key={c.id}>
+                  <strong>Case #{c.id}</strong> {c.title} | source: {c.source} | status: {c.status}
+                  {c.source === 'complaint' && <span> | formed by officer approval</span>}
+                </li>
+              ))}
+              {caseList.length === 0 && <li>No formed cases yet.</li>}
+            </ul>
+          </div>
+
+          <div className="panel">
+            <h3>Complaint Workflow Desk</h3>
+            {workflow.caseId && (
+              <p style={{ margin: 0 }}>
+                <strong>Selected:</strong> complaint #{workflow.caseId} {selectedCaseTitle ? `- ${selectedCaseTitle}` : ''}
+              </p>
+            )}
+            <p style={{ margin: 0, color: '#546176' }}>
+              Base users/complainants: submit and resubmit. Cadet: complainant validation + cadet review. Officer: final review.
+            </p>
+            <input placeholder="Case ID" value={workflow.caseId} onChange={(e) => setWorkflow({ ...workflow, caseId: e.target.value })} />
+
+            <div className="two-col">
+              <div style={{ display: 'grid', gap: 8 }}>
+                {isCadet && (
+                  <>
+                    <h4>Cadet Actions</h4>
+                    <input
+                      placeholder="Complainant Record ID"
+                      value={workflow.complainantRecordId}
+                      onChange={(e) => setWorkflow({ ...workflow, complainantRecordId: e.target.value })}
+                    />
+                    <select value={workflow.cadetApproved ? 'true' : 'false'} onChange={(e) => setWorkflow({ ...workflow, cadetApproved: e.target.value === 'true' })}>
+                      <option value="true">Approve</option>
+                      <option value="false">Reject</option>
+                    </select>
+                    <textarea placeholder="Cadet note / mandatory error message on reject" value={workflow.cadetNote} onChange={(e) => setWorkflow({ ...workflow, cadetNote: e.target.value })} />
+                    <button type="button" onClick={cadetReviewComplainant}>Save Complainant Review</button>
+                    <button type="button" onClick={cadetFinalReview}>Cadet Final Review</button>
+                  </>
+                )}
+
+                {!isCadet && <p style={{ margin: 0, color: '#546176' }}>Cadet actions are hidden for your role.</p>}
+              </div>
+
+              <div style={{ display: 'grid', gap: 8 }}>
+                {isOfficer && (
+                  <>
+                    <h4>Officer Actions</h4>
+                    <select value={workflow.officerApproved ? 'true' : 'false'} onChange={(e) => setWorkflow({ ...workflow, officerApproved: e.target.value === 'true' })}>
+                      <option value="true">Approve Case Formation</option>
+                      <option value="false">Return To Cadet</option>
+                    </select>
+                    <textarea placeholder="Officer note" value={workflow.officerNote} onChange={(e) => setWorkflow({ ...workflow, officerNote: e.target.value })} />
+                    <button type="button" onClick={officerFinalReview}>Submit Officer Review</button>
+                  </>
+                )}
+
+                <h4>Complainant Resubmit</h4>
+                <input placeholder="Updated title" value={workflow.resubmitTitle} onChange={(e) => setWorkflow({ ...workflow, resubmitTitle: e.target.value })} />
+                <textarea placeholder="Updated description" value={workflow.resubmitDescription} onChange={(e) => setWorkflow({ ...workflow, resubmitDescription: e.target.value })} />
+                <select value={workflow.resubmitSeverity} onChange={(e) => setWorkflow({ ...workflow, resubmitSeverity: Number(e.target.value) })}>
+                  <option value={1}>Level 3</option>
+                  <option value={2}>Level 2</option>
+                  <option value={3}>Level 1</option>
+                  <option value={4}>Critical</option>
+                </select>
+                <button type="button" onClick={complainantResubmit}>Submit Resubmission</button>
+              </div>
+            </div>
+
+            {workflowMsg && <p className={workflowMsgType === 'error' ? 'error' : ''}>{workflowMsg}</p>}
+          </div>
+        </>
+      )}
+
+      {mode === 'scene' && (
+        <>
+          <div className="panel">
+            <h3>Case List (Formed Cases)</h3>
+            <ul className="list">
+              {caseList.map((c) => (
+                <li key={c.id}>
+                  <strong>Case #{c.id}</strong> {c.title} | source: {c.source} | status: {c.status}
+                </li>
+              ))}
+              {caseList.length === 0 && <li>No formed cases yet.</li>}
+            </ul>
+          </div>
+
+          <div className="panel">
+              <h3>Scene Approval Desk (No Cadet)</h3>
+              <p style={{ margin: 0, color: '#546176' }}>
+                Only superior ranks can approve/deny scene report. If chief created it, approval is not required.
+              </p>
+              <input
+                placeholder="Scene Case ID"
+                value={sceneDesk.caseId}
+                onChange={(e) => setSceneDesk({ ...sceneDesk, caseId: e.target.value })}
+              />
+              {selectedSceneReport && (
+                <div style={{ border: '1px solid #d8deea', borderRadius: 8, padding: 10, fontSize: 13 }}>
+                  <div><strong>Report #{selectedSceneReport.id}</strong> - {selectedSceneReport.title}</div>
+                  <div>status: {selectedSceneReport.status}</div>
+                  <div>reported at: {selectedSceneReport.scene_reported_at || '-'}</div>
+                  <div>severity: {selectedSceneReport.severity}</div>
+                  <div>description: {selectedSceneReport.description}</div>
+                  <div>witnesses: {selectedSceneReport.witnesses?.length || 0}</div>
+                  <div>complainants: {selectedSceneReport.complainants?.length || 0}</div>
+                  {(selectedSceneReport.witnesses || []).map((w) => (
+                    <div key={w.id} style={{ marginTop: 6 }}>
+                      witness #{w.id}: {w.full_name} | nid:{w.national_id} | phone:{w.phone}
+                      {w.statement ? ` | statement: ${w.statement}` : ''}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button type="button" onClick={approveScene}>Approve Scene (Direct Superior)</button>
+              <textarea
+                placeholder="Deny note (optional)"
+                value={sceneDesk.denyNote}
+                onChange={(e) => setSceneDesk({ ...sceneDesk, denyNote: e.target.value })}
+              />
+              <button type="button" onClick={denyScene}>Deny Scene (Direct Superior)</button>
+              <input
+                placeholder="Add complainant user ID later"
+                value={sceneDesk.addComplainantUserId}
+                onChange={(e) => setSceneDesk({ ...sceneDesk, addComplainantUserId: e.target.value })}
+              />
+              <button type="button" onClick={addSceneComplainant}>Add Complainant To Scene Case</button>
+              {sceneMsg && <p className={sceneMsgType === 'error' ? 'error' : ''}>{sceneMsg}</p>}
+          </div>
+        </>
+      )}
     </div>
   )
 }

@@ -7,11 +7,11 @@ DEFAULT_ROLES = {
     'administrator': ['rbac.manage', 'dashboard.read', 'case.read_all'],
     'chief': [
         'case.assign_detective', 'case.scene.create', 'case.send_to_court',
-        'interrogation.chief_review', 'case.read_all', 'dashboard.read',
+        'interrogation.chief_review', 'case.read_all', 'dashboard.read', 'case.scene.add_complainant',
     ],
     'captain': [
         'case.assign_detective', 'case.send_to_court',
-        'interrogation.captain_decision', 'case.read_all', 'dashboard.read',
+        'interrogation.captain_decision', 'case.read_all', 'dashboard.read', 'case.scene.add_complainant',
     ],
     'sergeant': [
         'case.assign_detective', 'case.complaint.officer_review',
@@ -19,7 +19,7 @@ DEFAULT_ROLES = {
     ],
     'detective': [
         'investigation.board.manage', 'suspect.manage', 'interrogation.manage',
-        'tip.detective_review', 'case.read_all',
+        'tip.detective_review', 'case.read_all', 'case.scene.add_complainant',
     ],
     'police officer': [
         'case.scene.create', 'case.complaint.officer_review',

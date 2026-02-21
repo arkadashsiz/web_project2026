@@ -90,6 +90,7 @@ class CasesFlowTest(APITestCase):
     def test_scene_case_has_no_complainants_initially_and_can_add_later(self):
         role = Role.objects.create(name='officer_add')
         RolePermission.objects.create(role=role, action='case.scene.create')
+        RolePermission.objects.create(role=role, action='case.scene.add_complainant')
         UserRole.objects.create(user=self.user, role=role)
 
         created = self.client.post('/api/cases/cases/submit_scene_report/', {
@@ -164,6 +165,78 @@ class CasesFlowTest(APITestCase):
         ok = self.client.post(f'/api/cases/cases/{cid}/approve_scene/', {}, format='json')
         self.assertEqual(ok.status_code, 200)
         self.assertEqual(ok.data['status'], 'open')
+
+    def test_scene_deny_requires_direct_superior(self):
+        reporter = User.objects.create_user(
+            username='reporter_po2',
+            password='VeryStrong123',
+            email='reporter2@example.com',
+            phone='09130000012',
+            national_id='3012',
+        )
+        po_role, _ = Role.objects.get_or_create(name='police officer')
+        RolePermission.objects.create(role=po_role, action='case.scene.create')
+        RolePermission.objects.create(role=po_role, action='case.read_all')
+        UserRole.objects.create(user=reporter, role=po_role)
+
+        self.client.force_authenticate(user=reporter)
+        created = self.client.post('/api/cases/cases/submit_scene_report/', {
+            'title': 'Scene deny',
+            'description': 'desc',
+            'severity': 2,
+            'scene_reported_at': '2026-02-21T10:00',
+        }, format='json').data
+        cid = created['id']
+
+        same_rank = User.objects.create_user(
+            username='po_same',
+            password='VeryStrong123',
+            email='posame@example.com',
+            phone='09130000013',
+            national_id='3013',
+        )
+        UserRole.objects.create(user=same_rank, role=po_role)
+        self.client.force_authenticate(user=same_rank)
+        denied = self.client.post(f'/api/cases/cases/{cid}/deny_scene/', {'note': 'invalid'}, format='json')
+        self.assertEqual(denied.status_code, 403)
+
+        sergeant = User.objects.create_user(
+            username='serg_deny',
+            password='VeryStrong123',
+            email='sergdeny@example.com',
+            phone='09130000014',
+            national_id='3014',
+        )
+        s_role, _ = Role.objects.get_or_create(name='sergeant')
+        RolePermission.objects.create(role=s_role, action='case.complaint.officer_review')
+        RolePermission.objects.create(role=s_role, action='case.read_all')
+        UserRole.objects.create(user=sergeant, role=s_role)
+        self.client.force_authenticate(user=sergeant)
+        ok = self.client.post(f'/api/cases/cases/{cid}/deny_scene/', {'note': 'invalid scene'}, format='json')
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.data['status'], 'void')
+
+    def test_multi_role_cadet_and_sergeant_can_create_scene(self):
+        multi = User.objects.create_user(
+            username='multi_role',
+            password='VeryStrong123',
+            email='multi@example.com',
+            phone='09130000015',
+            national_id='3015',
+        )
+        cadet, _ = Role.objects.get_or_create(name='cadet')
+        sergeant, _ = Role.objects.get_or_create(name='sergeant')
+        UserRole.objects.create(user=multi, role=cadet)
+        UserRole.objects.create(user=multi, role=sergeant)
+
+        self.client.force_authenticate(user=multi)
+        resp = self.client.post('/api/cases/cases/submit_scene_report/', {
+            'title': 'Scene multi',
+            'description': 'desc',
+            'severity': 2,
+            'scene_reported_at': '2026-02-21T10:00',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201)
 
     def test_assign_detective_requires_permission(self):
         case = self.client.post('/api/cases/cases/submit_complaint/', {
