@@ -20,6 +20,22 @@ def has_any_action(user, actions):
     return user.is_superuser or any(user_has_action(user, a) for a in actions)
 
 
+POLICE_RANK = {
+    'cadet': 1,
+    'patrol officer': 2,
+    'police officer': 3,
+    'detective': 3,
+    'sergeant': 4,
+    'captain': 5,
+    'chief': 6,
+}
+
+
+def user_rank(user):
+    ranks = [POLICE_RANK[r] for r in user.user_roles.values_list('role__name', flat=True) if r in POLICE_RANK]
+    return max(ranks) if ranks else 0
+
+
 class CaseViewSet(viewsets.ModelViewSet):
     queryset = Case.objects.all().select_related('created_by', 'assigned_detective')
     serializer_class = CaseSerializer
@@ -38,9 +54,6 @@ class CaseViewSet(viewsets.ModelViewSet):
 
     @decorators.action(detail=False, methods=['post'])
     def submit_complaint(self, request):
-        if not has_any_action(request.user, ['case.submit_complaint']):
-            return Response({'detail': 'No permission'}, status=403)
-
         data = request.data.copy()
         data['source'] = Case.Source.COMPLAINT
         serializer = self.get_serializer(data=data)
@@ -65,9 +78,13 @@ class CaseViewSet(viewsets.ModelViewSet):
     def submit_scene_report(self, request):
         if not has_any_action(request.user, ['case.scene.create']):
             return Response({'detail': 'No permission'}, status=403)
+        if request.user.user_roles.filter(role__name='cadet').exists() and not request.user.is_superuser:
+            return Response({'detail': 'Cadet cannot create scene report case'}, status=403)
 
         data = request.data.copy()
         data['source'] = Case.Source.SCENE
+        if not data.get('scene_reported_at'):
+            return Response({'detail': 'scene_reported_at is required for scene-based case'}, status=400)
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
 
@@ -86,15 +103,49 @@ class CaseViewSet(viewsets.ModelViewSet):
 
     @decorators.action(detail=True, methods=['post'])
     def approve_scene(self, request, pk=None):
-        if not has_any_action(request.user, ['case.complaint.officer_review', 'case.send_to_court']):
+        if not has_any_action(request.user, ['case.complaint.officer_review', 'case.send_to_court', 'case.scene.create']):
             return Response({'detail': 'No permission'}, status=403)
         case = self.get_object()
         if case.source != Case.Source.SCENE:
             return Response({'detail': 'Not scene-based case'}, status=400)
+        if case.status != Case.Status.UNDER_REVIEW:
+            return Response({'detail': 'Scene case is not awaiting approval'}, status=400)
+
+        creator_rank = user_rank(case.created_by)
+        approver_rank = user_rank(request.user)
+        if creator_rank == 0:
+            return Response({'detail': 'Invalid reporter role for scene case'}, status=400)
+        if creator_rank >= POLICE_RANK['chief']:
+            return Response({'detail': 'Chief-created scene case does not require approval'}, status=400)
+        if approver_rank != creator_rank + 1 and not request.user.is_superuser:
+            return Response({'detail': 'Only one direct superior rank can approve this scene case'}, status=403)
+
         case.status = Case.Status.OPEN
         case.save(update_fields=['status', 'updated_at'])
         log_case(case, request.user, 'scene.approved')
         return Response(self.get_serializer(case).data)
+
+    @decorators.action(detail=True, methods=['post'])
+    def add_scene_complainant(self, request, pk=None):
+        case = self.get_object()
+        if case.source != Case.Source.SCENE:
+            return Response({'detail': 'Only scene cases can add complainants by this endpoint'}, status=400)
+        if not has_any_action(request.user, ['case.scene.create', 'case.complaint.intern_review', 'case.complaint.officer_review']):
+            return Response({'detail': 'No permission'}, status=403)
+
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response({'detail': 'user_id is required'}, status=400)
+
+        obj, created = CaseComplainant.objects.get_or_create(
+            case=case,
+            user_id=int(user_id),
+            defaults={'status': CaseComplainant.Status.PENDING},
+        )
+        if not created:
+            return Response({'detail': 'Complainant already exists for this case'}, status=400)
+        log_case(case, request.user, 'scene.complainant.added', f'user_id={user_id}')
+        return Response(CaseComplainantSerializer(obj).data, status=201)
 
     @decorators.action(detail=True, methods=['post'])
     def intern_review(self, request, pk=None):
@@ -272,16 +323,32 @@ class CaseViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(case).data)
 
 
-class ComplaintSubmissionViewSet(viewsets.ModelViewSet):
+class ComplaintSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ComplaintSubmission.objects.select_related('case', 'complainant').all()
     serializer_class = ComplaintSubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        if has_any_action(user, ['case.read_all']):
+            return self.queryset.order_by('-id')
+        return self.queryset.filter(
+            Q(case__created_by=user) | Q(case__complainants__user=user)
+        ).distinct().order_by('-id')
 
-class CaseComplainantViewSet(viewsets.ModelViewSet):
+
+class CaseComplainantViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = CaseComplainant.objects.select_related('case', 'user').all()
     serializer_class = CaseComplainantSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if has_any_action(user, ['case.read_all']):
+            return self.queryset.order_by('-id')
+        return self.queryset.filter(
+            Q(case__created_by=user) | Q(case__complainants__user=user)
+        ).distinct().order_by('-id')
 
 
 class CaseWitnessViewSet(viewsets.ModelViewSet):

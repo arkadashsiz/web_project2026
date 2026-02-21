@@ -27,6 +27,7 @@ class Case(models.Model):
     source = models.CharField(max_length=20, choices=Source.choices)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     severity = models.IntegerField(choices=Severity.choices, default=Severity.LEVEL_3)
+    scene_reported_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='created_cases')
     assigned_detective = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='detective_cases'

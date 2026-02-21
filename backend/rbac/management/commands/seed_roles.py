@@ -15,7 +15,7 @@ DEFAULT_ROLES = {
     ],
     'sergeant': [
         'case.assign_detective', 'case.complaint.officer_review',
-        'suspect.manage', 'interrogation.manage', 'case.read_all',
+        'suspect.manage', 'interrogation.manage', 'case.read_all', 'case.scene.add_complainant',
     ],
     'detective': [
         'investigation.board.manage', 'suspect.manage', 'interrogation.manage',
@@ -23,9 +23,9 @@ DEFAULT_ROLES = {
     ],
     'police officer': [
         'case.scene.create', 'case.complaint.officer_review',
-        'evidence.manage', 'tip.officer_review', 'reward.verify', 'case.read_all',
+        'evidence.manage', 'tip.officer_review', 'reward.verify', 'case.read_all', 'case.scene.add_complainant',
     ],
-    'patrol officer': ['case.scene.create', 'evidence.manage', 'case.read_all'],
+    'patrol officer': ['case.scene.create', 'evidence.manage', 'case.read_all', 'case.scene.add_complainant'],
     'cadet': ['case.complaint.intern_review', 'case.read_all'],
     'complainant': ['case.submit_complaint', 'tip.submit'],
     'witness': ['tip.submit'],

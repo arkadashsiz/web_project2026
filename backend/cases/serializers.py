@@ -24,13 +24,14 @@ class ComplaintSubmissionSerializer(serializers.ModelSerializer):
 class CaseSerializer(serializers.ModelSerializer):
     complainants = CaseComplainantSerializer(many=True, read_only=True)
     witnesses = CaseWitnessSerializer(many=True, read_only=True)
+    complaint_submission = ComplaintSubmissionSerializer(read_only=True)
 
     class Meta:
         model = Case
         fields = (
             'id', 'title', 'description', 'source', 'status', 'severity',
-            'created_by', 'assigned_detective', 'created_at', 'updated_at',
-            'complainants', 'witnesses'
+            'scene_reported_at', 'created_by', 'assigned_detective', 'created_at', 'updated_at',
+            'complainants', 'witnesses', 'complaint_submission'
         )
         read_only_fields = ('created_by',)
 
