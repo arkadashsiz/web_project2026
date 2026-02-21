@@ -1,0 +1,48 @@
+from django.contrib.auth import get_user_model
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from cases.models import Case
+
+User = get_user_model()
+
+
+def _modules_for_user(user):
+    role_names = set(user.user_roles.values_list('role__name', flat=True))
+    modules = [
+        {'key': 'cases', 'title': 'Case Management', 'path': '/cases'},
+        {'key': 'evidence', 'title': 'Evidence Registry', 'path': '/evidence'},
+    ]
+
+    if user.is_superuser or 'detective' in role_names:
+        modules.append({'key': 'detective_board', 'title': 'Detective Board', 'path': '/board'})
+
+    if user.is_superuser or role_names.intersection({'captain', 'chief', 'judge'}):
+        modules.append({'key': 'reports', 'title': 'Global Reports', 'path': '/reports'})
+        modules.append({'key': 'judiciary', 'title': 'Judiciary', 'path': '/judiciary'})
+
+    if user.is_superuser or role_names.intersection({'police officer', 'detective'}):
+        modules.append({'key': 'rewards', 'title': 'Rewards & Tips', 'path': '/rewards'})
+
+    if user.is_superuser:
+        modules.append({'key': 'rbac_admin', 'title': 'RBAC Admin', 'path': '/admin-rbac'})
+
+    return modules
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def stats(request):
+    return Response({
+        'resolved_cases': Case.objects.filter(status=Case.Status.CLOSED).count(),
+        'employees': User.objects.exclude(user_roles__role__name='base user').distinct().count(),
+        'active_cases': Case.objects.exclude(status__in=[Case.Status.CLOSED, Case.Status.VOID]).count(),
+        'total_cases': Case.objects.count(),
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def modules(request):
+    return Response({'modules': _modules_for_user(request.user)})
