@@ -3,13 +3,12 @@ import { Navigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 
 function ProtectedRoute({ children, allowedRoles }) {
-    const { token, roles } = useContext(AuthContext);
+    const { access, roles } = useContext(AuthContext);
 
-    if (!token) {
+    if (!access) {
         return <Navigate to="/login" />;
     }
 
-    // If roles restriction exists
     if (allowedRoles && !roles.some(role => allowedRoles.includes(role))) {
         return <Navigate to="/dashboard" />;
     }
