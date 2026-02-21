@@ -1,59 +1,87 @@
+# investigation/models.py
 from django.db import models
 from django.conf import settings
-from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator, MaxValueValidator
 
-class EvidenceConnection(models.Model):
-    """
-    Represents the 'Detective Board'. 
-    It connects a specific piece of Evidence to a specific Suspect within a Case.
-    """
-    class ConnectionStrength(models.TextChoices):
-        CIRCUMSTANTIAL = 'CIRCUMSTANTIAL', 'Circumstantial'
-        CORROBORATING = 'CORROBORATING', 'Corroborating'
-        DIRECT = 'DIRECT', 'Direct Link'
 
-    # Links
-    case = models.ForeignKey('cases.Case', on_delete=models.CASCADE, related_name='board_connections')
-    suspect = models.ForeignKey('cases.CaseSuspect', on_delete=models.CASCADE, related_name='evidence_links')
-    evidence = models.ForeignKey('evidence.Evidence', on_delete=models.CASCADE, related_name='suspect_connections')
-    
-    # Metadata
-    strength = models.CharField(max_length=20, choices=ConnectionStrength.choices, default=ConnectionStrength.CIRCUMSTANTIAL)
-    notes = models.TextField(blank=True, help_text="Detective's notes on how this evidence connects to the suspect.")
-    created_at = models.DateTimeField(auto_now_add=True)
+# --- Detective Board Models (Chapter 4.4) ---
+
+class DetectiveBoard(models.Model):
+    case = models.OneToOneField('cases.Case', on_delete=models.CASCADE, related_name='detective_board')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
-
-    class Meta:
-        unique_together = ('suspect', 'evidence') # One piece of evidence can't be linked to the same suspect twice
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Link: {self.evidence.title} -> {self.suspect}"
+        return f"Board for Case {self.case_id}"
+
+
+class BoardItem(models.Model):
+    board = models.ForeignKey(DetectiveBoard, on_delete=models.CASCADE, related_name='items')
+    # Requires evidence app and Evidence model
+    evidence = models.ForeignKey('evidence.Evidence', on_delete=models.CASCADE, related_name='board_placements')
+    x_position = models.FloatField(default=0.0)
+    y_position = models.FloatField(default=0.0)
+
+    def __str__(self):
+        return f"Item {self.evidence_id} at ({self.x_position}, {self.y_position})"
+
+
+class BoardConnection(models.Model):
+    board = models.ForeignKey(DetectiveBoard, on_delete=models.CASCADE, related_name='connections')
+    from_item = models.ForeignKey(BoardItem, on_delete=models.CASCADE, related_name='outgoing_connections')
+    to_item = models.ForeignKey(BoardItem, on_delete=models.CASCADE, related_name='incoming_connections')
+    color = models.CharField(max_length=20, default='red')  # "Red Thread"
+
+    def __str__(self):
+        return f"Connection from {self.from_item_id} to {self.to_item_id}"
+
+
+# --- Interrogation Workflow Model (Chapter 4.5) ---
+
+class Interrogation(models.Model):
+    case_suspect = models.OneToOneField('cases.CaseSuspect', on_delete=models.CASCADE, related_name='interrogation')
+
+    # Detective
+    detective = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='detective_interrogations')
+    detective_score = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(10)], null=True, blank=True)
+    detective_notes = models.TextField(blank=True)
+
+    # Sergeant
+    sergeant = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='sergeant_interrogations')
+    sergeant_score = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(10)], null=True, blank=True)
+    sergeant_notes = models.TextField(blank=True)
+
+    # Approvals
+    captain_approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='captain_approvals')
+    chief_approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='chief_approvals')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Interrogation: {self.case_suspect_id}"
+
+    def is_fully_evaluated(self):
+        # both scores present and valid (1..10 enforced by validators)
+        return self.detective_score is not None and self.sergeant_score is not None
+
+
+# --- Judicial/Trial Model (Chapter 4.6) ---
 
 class Trial(models.Model):
-    """
-    Represents the Judicial phase. Only accessible by Judges.
-    """
-    class Verdict(models.TextChoices):
-        GUILTY = 'GUILTY', 'Guilty'
-        NOT_GUILTY = 'NOT_GUILTY', 'Not Guilty'
-        MISTRIAL = 'MISTRIAL', 'Mistrial'
+    VERDICT_CHOICES = [
+        ('GUILTY', 'Guilty'),
+        ('NOT_GUILTY', 'Not Guilty'),
+        ('MISTRIAL', 'Mistrial'),
+    ]
 
-    # One trial per CaseSuspect entry
-    case_suspect = models.OneToOneField('cases.CaseSuspect', on_delete=models.CASCADE, related_name='trial', null=True, blank=True )
-    judge = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='trials_judged')
-    
-    date_started = models.DateField()
-    date_concluded = models.DateField(null=True, blank=True)
-    
-    verdict = models.CharField(max_length=20, choices=Verdict.choices, null=True, blank=True)
-    sentence_years = models.IntegerField(default=0, help_text="0 if not guilty or suspended")
-    
-    court_transcripts = models.TextField(blank=True)
-    
-    def clean(self):
-        # Ensure the user is actually a judge (Level 70)
-        if self.judge.access_level < 70:
-            raise ValidationError("The assigned user is not a Judge.")
+    case_suspect = models.OneToOneField('cases.CaseSuspect', on_delete=models.CASCADE, related_name='trial')
+    judge = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    verdict = models.CharField(max_length=20, choices=VERDICT_CHOICES)
+    sentence_years = models.IntegerField(default=0, help_text="Prison sentence in years (if guilty)")
+    judge_notes = models.TextField(blank=True)
+    trial_date = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"Trial for {self.case_suspect} - Judge {self.judge.last_name}"
+        return f"Trial for {self.case_suspect_id} - {self.verdict}"

@@ -1,69 +1,89 @@
+# investigation/serializers.py
 from rest_framework import serializers
-from django.db import transaction
-from .models import EvidenceConnection, Trial
-from evidence.models import Evidence, Testimony, Biological, Vehicle, IDDocument
-from evidence.serializers import (
-    BaseEvidenceSerializer, TestimonySerializer, BiologicalSerializer, 
-    VehicleSerializer, IDDocumentSerializer
-)
+from django.utils import timezone
 
-class EvidenceConnectionReadSerializer(serializers.ModelSerializer):
-    """
-    Serializer for reading the Detective Board.
-    It dynamically selects the correct serializer based on Evidence Type.
-    """
-    evidence_details = serializers.SerializerMethodField()
+from .models import DetectiveBoard, BoardItem, BoardConnection, Interrogation, Trial
+from cases.models import CaseSuspect
+
+
+class BoardItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BoardItem
+        fields = '__all__'
+
+
+class BoardConnectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BoardConnection
+        fields = '__all__'
+
+
+class DetectiveBoardSerializer(serializers.ModelSerializer):
+    items = BoardItemSerializer(many=True, read_only=True)
+    connections = BoardConnectionSerializer(many=True, read_only=True)
 
     class Meta:
-        model = EvidenceConnection
-        fields = ['id', 'case', 'suspect', 'evidence', 'evidence_details', 'strength', 'notes', 'created_at']
+        model = DetectiveBoard
+        fields = '__all__'
 
-    def get_evidence_details(self, obj):
-        evidence_instance = obj.evidence
-        if hasattr(evidence_instance, 'testimony'):
-            return TestimonySerializer(evidence_instance.testimony).data
-        elif hasattr(evidence_instance, 'biological'):
-            return BiologicalSerializer(evidence_instance.biological).data
-        elif hasattr(evidence_instance, 'vehicle'):
-            return VehicleSerializer(evidence_instance.vehicle).data
-        elif hasattr(evidence_instance, 'iddocument'):
-            return IDDocumentSerializer(evidence_instance.iddocument).data
-        else:
-            return BaseEvidenceSerializer(evidence_instance).data
 
-class EvidenceConnectionWriteSerializer(serializers.ModelSerializer):
-    """ Serializer for creating links on the board. """
+class InterrogationSerializer(serializers.ModelSerializer):
+    detective_name = serializers.ReadOnlyField(source='detective.get_full_name')
+    sergeant_name = serializers.ReadOnlyField(source='sergeant.get_full_name')
+
     class Meta:
-        model = EvidenceConnection
-        fields = ['case', 'suspect', 'evidence', 'strength', 'notes']
+        model = Interrogation
+        fields = '__all__'
+        read_only_fields = ['case_suspect', 'detective', 'sergeant', 'captain_approved_by', 'chief_approved_by']
 
-    def validate(self, data):
-        if data['evidence'].case != data['case']:
-            raise serializers.ValidationError("The evidence does not belong to the selected case.")
-        return data
 
 class TrialSerializer(serializers.ModelSerializer):
-    judge_name = serializers.CharField(source='judge.get_full_name', read_only=True)
+    judge_name = serializers.ReadOnlyField(source='judge.get_full_name')
 
     class Meta:
         model = Trial
         fields = '__all__'
-        read_only_fields = ['judge'] 
+        read_only_fields = ['judge']
 
-class MostWantedSerializer(serializers.Serializer):
-    """
-    Read-only serializer for the Most Wanted list (Crime Level 4).
-    Calculates a threat score based on Interrogation (detective_score) and Evidence.
-    """
-    suspect_name = serializers.CharField(source='suspect.get_full_name') 
-    case_title = serializers.CharField(source='case.title')
-    # Mapped 'detective_score' from your model to 'interrogation_score' for the API
-    interrogation_score = serializers.IntegerField(source='detective_score')
-    evidence_count = serializers.IntegerField(source='evidence_links.count')
-    threat_score = serializers.SerializerMethodField()
 
-    def get_threat_score(self, obj):
-        # Formula: (Detective Score * 1.5) + (Linked Evidence * 10)
-        i_score = obj.detective_score or 0
-        e_count = obj.evidence_links.count()
-        return round((i_score * 1.5) + (e_count * 10))
+class MostWantedSerializer(serializers.ModelSerializer):
+    suspect_name = serializers.CharField(source='suspect.get_full_name', read_only=True)
+    crime_level = serializers.IntegerField(source='case.crime_level', read_only=True)
+    detective_guilt_score = serializers.SerializerMethodField()
+    days_wanted = serializers.SerializerMethodField()
+    rank_score = serializers.SerializerMethodField()
+    reward_rials = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CaseSuspect
+        fields = [
+            'id', 'suspect_name', 'case', 'crime_level',
+            'wanted_since', 'days_wanted', 'detective_guilt_score',
+            'rank_score', 'reward_rials'
+        ]
+
+    def get_detective_guilt_score(self, obj):
+        try:
+            if obj.interrogation and obj.interrogation.detective_score:
+                return obj.interrogation.detective_score
+        except Exception:
+            pass
+        return 0
+
+    def get_days_wanted(self, obj):
+        wanted_since = getattr(obj, 'wanted_since', None)
+        if not wanted_since:
+            return 0
+        delta = timezone.now() - wanted_since
+        return max(delta.days, 0)
+
+    def get_rank_score(self, obj):
+        # Formula: L_j * D_i  (with mapping: 3->1, 2->2, 1->3, 0->4; default 1)
+        level_map = {3: 1, 2: 2, 1: 3, 0: 4}  # 0 is Critical Level
+        lj = level_map.get(getattr(obj.case, 'crime_level', 3), 1)
+        di = self.get_days_wanted(obj)
+        return lj * di
+
+    def get_reward_rials(self, obj):
+        # Formula: Rank * 20,000,000
+        return self.get_rank_score(obj) * 20000000

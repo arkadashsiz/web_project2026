@@ -1,6 +1,11 @@
 from rest_framework import serializers
 from .models import Case, Complaint, CrimeSceneReport, CaseSuspect
+from investigations.serializers import InterrogationSerializer
 
+class CaseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Case
+        fields = '__all__'
 
 class ComplaintSerializer(serializers.ModelSerializer):
     complainant_username = serializers.ReadOnlyField(source='complainant.username')
@@ -66,25 +71,8 @@ class CrimeSceneReviewSerializer(serializers.Serializer):
 
 class CaseSuspectSerializer(serializers.ModelSerializer):
     suspect_username = serializers.ReadOnlyField(source='suspect.username')
+    interrogation = InterrogationSerializer(read_only=True)
 
     class Meta:
         model = CaseSuspect
-        fields = [
-            'id', 'case', 'suspect', 'suspect_username',
-            'status', 'date_marked_wanted'
-        ]
-        read_only_fields = ['date_marked_wanted']
-
-
-class CaseSerializer(serializers.ModelSerializer):
-    suspects_list = CaseSuspectSerializer(source='casesuspect_set', many=True, read_only=True)
-    lead_detective_username = serializers.ReadOnlyField(source='lead_detective.username')
-
-    class Meta:
-        model = Case
-        fields = [
-            'id', 'title', 'description', 'crime_level', 'status',
-            'lead_detective', 'lead_detective_username', 'assigned_personnel',
-            'complainants', 'suspects_list', 'creation_date', 'last_updated'
-        ]
-        read_only_fields = ['status', 'creation_date', 'last_updated']
+        fields = ['id', 'case', 'suspect', 'suspect_username', 'status', 'wanted_since', 'interrogation']

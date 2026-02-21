@@ -112,52 +112,24 @@ class CrimeSceneReport(models.Model):
 
 class CaseSuspect(models.Model):
     class Status(models.TextChoices):
-        WANTED = 'WANTED', 'Wanted'
-        HIGHLY_WANTED = 'HIGHLY_WANTED', 'Highly Wanted (Critical)'
-        IN_CUSTODY = 'IN_CUSTODY', 'In Custody (Interrogation Pending)'
-        PENDING_SERGEANT_REVIEW = 'PENDING_SGT', 'Pending Sergeant Review'
-        RELEASED_INSUFFICIENT_EVIDENCE = 'RELEASED_EVIDENCE', 'Released (Insufficient Evidence)'
-        SENT_TO_TRIAL = 'SENT_TO_TRIAL', 'Sent to Trial'
-        RELEASED_ON_BAIL = 'BAIL', 'Released on Bail'
+        UNDER_INVESTIGATION = 'UNDER_INVESTIGATION', 'Under Investigation'
+        WAITING_SERGEANT = 'WAITING_SERGEANT', 'Waiting Sergeant Approval'
+        SERGEANT_APPROVED = 'SERGEANT_APPROVED', 'Sergeant Approved'
+        WAITING_CAPTAIN = 'WAITING_CAPTAIN', 'Waiting Captain Approval'
+        TRIAL_READY = 'TRIAL_READY', 'Ready for Trial'
         CONVICTED = 'CONVICTED', 'Convicted'
         ACQUITTED = 'ACQUITTED', 'Acquitted'
+        MISTRIAL = 'MISTRIAL', 'Mistrial'
+        RELEASED_ON_BAIL = 'RELEASED_ON_BAIL', 'Released on Bail'
 
     case = models.ForeignKey('Case', on_delete=models.CASCADE)
     suspect = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    status = models.CharField(max_length=30, choices=Status.choices, default=Status.WANTED)
-
-    date_marked_wanted = models.DateTimeField(auto_now_add=True)
-    date_arrested = models.DateTimeField(null=True, blank=True)
-
-    detective_notes = models.TextField(blank=True, help_text="Interrogation summary by Lead Detective")
-    detective_score = models.PositiveIntegerField(default=0, help_text="Guilt probability score (1-10)")
-
-    sergeant_notes = models.TextField(blank=True, help_text="Review notes by Sergeant")
-    sergeant_score = models.PositiveIntegerField(default=0, help_text="Validation score (1-10)")
-
-    captain_approved_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name='captain_approvals'
-    )
-    chief_approved_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name='chief_approvals'
-    )
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.UNDER_INVESTIGATION)
+    
+    wanted_since = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ('case', 'suspect')
-        verbose_name_plural = "Case Suspects"
 
     def __str__(self):
-        return f"{self.suspect.username} - {self.get_status_display()}"
-
-    @property
-    def days_wanted(self):
-        if self.status not in [self.Status.WANTED, self.Status.HIGHLY_WANTED]:
-            return 0
-        delta = timezone.now() - self.date_marked_wanted
-        return delta.days
+        return f"{self.suspect} in Case {self.case.id}"
