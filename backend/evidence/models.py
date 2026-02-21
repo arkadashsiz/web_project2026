@@ -17,6 +17,7 @@ class EvidenceBase(models.Model):
 class WitnessEvidence(EvidenceBase):
     transcript = models.TextField(blank=True)
     media_url = models.URLField(blank=True)
+    media_items = models.JSONField(default=list, blank=True)
 
 
 class BiologicalEvidence(EvidenceBase):
