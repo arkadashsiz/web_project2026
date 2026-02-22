@@ -13,7 +13,16 @@ class Tip(models.Model):
     submitter = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     case = models.ForeignKey('cases.Case', on_delete=models.CASCADE, null=True, blank=True)
     suspect = models.ForeignKey('investigation.Suspect', on_delete=models.CASCADE, null=True, blank=True)
+    assigned_detective = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_tips',
+    )
     content = models.TextField()
+    officer_note = models.TextField(blank=True)
+    detective_note = models.TextField(blank=True)
     status = models.CharField(max_length=30, choices=Status.choices, default=Status.PENDING)
     created_at = models.DateTimeField(auto_now_add=True)
 

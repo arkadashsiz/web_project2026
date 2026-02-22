@@ -258,6 +258,47 @@ class SuspectViewSet(viewsets.ModelViewSet):
         suspect.save(update_fields=['status'])
         return Response(self.get_serializer(suspect).data)
 
+    @decorators.action(detail=False, methods=['post'])
+    def create_wanted_profile(self, request):
+        if not request.user.is_superuser:
+            return Response({'detail': 'Only superuser can create wanted profiles here.'}, status=403)
+
+        full_name = (request.data.get('full_name') or '').strip()
+        national_id = (request.data.get('national_id') or '').strip()
+        photo_url = (request.data.get('photo_url') or '').strip()
+        severity = int(request.data.get('severity', Case.Severity.LEVEL_2))
+        days_wanted = int(request.data.get('days_wanted', 0))
+        case_title = (request.data.get('case_title') or f'Wanted Seed: {full_name or "Unknown"}').strip()
+        case_description = (request.data.get('case_description') or 'Superuser seeded wanted profile for high-alert validation.').strip()
+
+        if not full_name:
+            return Response({'detail': 'full_name is required.'}, status=400)
+        if severity not in [Case.Severity.LEVEL_3, Case.Severity.LEVEL_2, Case.Severity.LEVEL_1, Case.Severity.CRITICAL]:
+            return Response({'detail': 'severity must be 1..4.'}, status=400)
+        if days_wanted < 0:
+            return Response({'detail': 'days_wanted must be >= 0.'}, status=400)
+
+        case = Case.objects.create(
+            title=case_title,
+            description=case_description,
+            source=Case.Source.SCENE,
+            status=Case.Status.OPEN,
+            severity=severity,
+            created_by=request.user,
+        )
+        suspect = Suspect.objects.create(
+            case=case,
+            full_name=full_name,
+            national_id=national_id,
+            photo_url=photo_url,
+            status=Suspect.Status.WANTED,
+            marked_at=timezone.now() - timezone.timedelta(days=days_wanted),
+        )
+        return Response({
+            'case_id': case.id,
+            'suspect': self.get_serializer(suspect).data,
+        }, status=201)
+
 
 class InterrogationViewSet(viewsets.ModelViewSet):
     queryset = Interrogation.objects.select_related('case', 'suspect', 'detective', 'sergeant').all()

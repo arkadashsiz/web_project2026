@@ -27,7 +27,7 @@ def _modules_for_user(user):
         modules.append({'key': 'reports', 'title': 'Global Reports', 'path': '/reports'})
         modules.append({'key': 'judiciary', 'title': 'Judiciary', 'path': '/judiciary'})
 
-    if user.is_superuser or role_names.intersection({'police officer', 'detective'}) or user_has_action(user, 'tip.detective_review'):
+    if user.is_superuser or role_names.intersection({'police officer', 'detective'}) or user_has_action(user, 'tip.detective_review') or user_has_action(user, 'tip.submit'):
         modules.append({'key': 'rewards', 'title': 'Rewards & Tips', 'path': '/rewards'})
 
     if user.is_superuser:

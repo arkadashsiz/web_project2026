@@ -1,17 +1,112 @@
 import { useEffect, useState } from 'react'
 import api from '../api/client'
+import { useAuth } from '../context/AuthContext'
 
 export default function HighAlertPage() {
+  const { user } = useAuth()
   const [list, setList] = useState([])
+  const [message, setMessage] = useState('')
+  const [form, setForm] = useState({
+    full_name: '',
+    national_id: '',
+    photo_url: '',
+    severity: 2,
+    days_wanted: 31,
+    case_title: '',
+    case_description: '',
+  })
+
+  const load = () => {
+    api.get('/investigation/high-alert/')
+      .then((res) => setList(res.data))
+      .catch(() => setList([]))
+  }
 
   useEffect(() => {
-    api.get('/investigation/high-alert/').then((res) => setList(res.data))
+    load()
   }, [])
 
+  const createWanted = async () => {
+    setMessage('')
+    try {
+      const res = await api.post('/investigation/suspects/create_wanted_profile/', {
+        ...form,
+        severity: Number(form.severity),
+        days_wanted: Number(form.days_wanted),
+      })
+      setMessage(`Wanted profile created. Case #${res.data.case_id}, suspect #${res.data.suspect.id}`)
+      setForm({
+        full_name: '',
+        national_id: '',
+        photo_url: '',
+        severity: 2,
+        days_wanted: 31,
+        case_title: '',
+        case_description: '',
+      })
+      load()
+    } catch (err) {
+      setMessage(err?.response?.data?.detail || 'Failed to create wanted profile')
+    }
+  }
+
   return (
-    <div className="panel">
-      <h3>High Alert Suspects</h3>
-      <div style={{ display: 'grid', gap: 10 }}>
+    <div style={{ display: 'grid', gap: 12 }}>
+      {user?.is_superuser && (
+        <div className="panel">
+          <h3>Superuser: Create Wanted Person</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <input
+              placeholder="Full name"
+              value={form.full_name}
+              onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+            />
+            <input
+              placeholder="National ID"
+              value={form.national_id}
+              onChange={(e) => setForm({ ...form, national_id: e.target.value })}
+            />
+            <input
+              placeholder="Photo URL"
+              value={form.photo_url}
+              onChange={(e) => setForm({ ...form, photo_url: e.target.value })}
+            />
+            <select value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value })}>
+              <option value={1}>Level 3 (1)</option>
+              <option value={2}>Level 2 (2)</option>
+              <option value={3}>Level 1 (3)</option>
+              <option value={4}>Critical (4)</option>
+            </select>
+            <input
+              type="number"
+              min="0"
+              placeholder="Days wanted"
+              value={form.days_wanted}
+              onChange={(e) => setForm({ ...form, days_wanted: e.target.value })}
+            />
+            <input
+              placeholder="Case title (optional)"
+              value={form.case_title}
+              onChange={(e) => setForm({ ...form, case_title: e.target.value })}
+            />
+          </div>
+          <textarea
+            style={{ marginTop: 8 }}
+            placeholder="Case description (optional)"
+            value={form.case_description}
+            onChange={(e) => setForm({ ...form, case_description: e.target.value })}
+          />
+          <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+            <button type="button" onClick={createWanted}>Create Wanted</button>
+            <button type="button" onClick={load}>Refresh High Alert List</button>
+          </div>
+          {message && <p className="error" style={{ marginTop: 8 }}>{message}</p>}
+        </div>
+      )}
+
+      <div className="panel">
+        <h3>High Alert Suspects</h3>
+        <div style={{ display: 'grid', gap: 10 }}>
         {list.map((x) => (
           <div key={x.group_key} style={{ border: '1px solid #d8deea', borderRadius: 10, padding: 10, background: '#fff' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '84px 1fr', gap: 10 }}>
@@ -42,6 +137,7 @@ export default function HighAlertPage() {
           </div>
         ))}
         {list.length === 0 && <p>No suspects in high alert list.</p>}
+      </div>
       </div>
     </div>
   )

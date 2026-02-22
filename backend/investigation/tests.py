@@ -382,3 +382,40 @@ class HighAlertRankingTests(APITestCase):
         self.assertEqual(rows[0]['full_name'], 'Person A')
         self.assertEqual(rows[0]['rank_score'], 160)
         self.assertEqual(rows[0]['reward_irr'], 3_200_000_000)
+
+    def test_superuser_can_create_wanted_profile(self):
+        su = User.objects.create_superuser(
+            username='root_high_alert',
+            password='Strong12345',
+            email='rootha@example.com',
+            phone='09139991111',
+            national_id='7001',
+        )
+        self.client.force_authenticate(su)
+        resp = self.client.post('/api/investigation/suspects/create_wanted_profile/', {
+            'full_name': 'Seed Wanted User',
+            'national_id': 'SEED-HA-1',
+            'severity': 4,
+            'days_wanted': 45,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201)
+        sid = resp.data['suspect']['id']
+        s = Suspect.objects.get(id=sid)
+        self.assertEqual(s.status, Suspect.Status.WANTED)
+        self.assertGreaterEqual(s.days_wanted(), 44)
+
+    def test_non_superuser_cannot_create_wanted_profile(self):
+        normal = User.objects.create_user(
+            username='normal_high_alert',
+            password='Strong12345',
+            email='normalha@example.com',
+            phone='09139992222',
+            national_id='7002',
+        )
+        self.client.force_authenticate(normal)
+        resp = self.client.post('/api/investigation/suspects/create_wanted_profile/', {
+            'full_name': 'Blocked User',
+            'severity': 2,
+            'days_wanted': 31,
+        }, format='json')
+        self.assertEqual(resp.status_code, 403)
