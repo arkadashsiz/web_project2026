@@ -643,8 +643,10 @@ def high_alert_list(request):
         representative = items[0]
 
         for s in items:
-            if s.case.status != Case.Status.CLOSED:
+            # Lj: maximum days wanted in open cases while under pursuit.
+            if s.case.status != Case.Status.CLOSED and s.status in [Suspect.Status.WANTED, Suspect.Status.HIGH_ALERT]:
                 max_lj = max(max_lj, max(s.days_wanted(), 0))
+            # Di: maximum severity ever (open or closed) for that person key.
             max_di = max(max_di, s.case.severity)
 
         rank_score = max_lj * max_di
@@ -652,7 +654,12 @@ def high_alert_list(request):
         is_high_alert = max_lj > 30
 
         for s in items:
-            new_status = Suspect.Status.HIGH_ALERT if is_high_alert else s.status
+            if is_high_alert and s.status == Suspect.Status.WANTED:
+                new_status = Suspect.Status.HIGH_ALERT
+            elif (not is_high_alert) and s.status == Suspect.Status.HIGH_ALERT:
+                new_status = Suspect.Status.WANTED
+            else:
+                new_status = s.status
             if s.status != new_status:
                 s.status = new_status
                 s.save(update_fields=['status'])

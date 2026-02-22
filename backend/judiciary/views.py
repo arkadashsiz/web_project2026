@@ -20,7 +20,7 @@ from .serializers import CourtSessionSerializer
 
 
 class CourtSessionViewSet(viewsets.ModelViewSet):
-    queryset = CourtSession.objects.select_related('case', 'judge').all()
+    queryset = CourtSession.objects.select_related('case', 'judge', 'convicted_suspect').all()
     serializer_class = CourtSessionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -72,6 +72,15 @@ class CourtSessionViewSet(viewsets.ModelViewSet):
 
         payload = {
             'case': CaseSerializer(case).data,
+            'complainant_details': [
+                {
+                    'id': row.id,
+                    'status': row.status,
+                    'review_note': row.review_note,
+                    'user': user_row(row.user),
+                }
+                for row in case.complainants.select_related('user').all()
+            ],
             'evidence': {
                 'witness': WitnessEvidenceSerializer(WitnessEvidence.objects.filter(case=case), many=True).data,
                 'biological': BiologicalEvidenceSerializer(BiologicalEvidence.objects.filter(case=case), many=True).data,
@@ -84,21 +93,31 @@ class CourtSessionViewSet(viewsets.ModelViewSet):
             'suspect_submissions': SuspectSubmissionSerializer(submissions, many=True).data,
             'logs': CaseLogSerializer(case.logs.all(), many=True).data,
             'involved_members': [user_row(u) for u in involved_users.values()],
-            'court_session': CourtSessionSerializer(case.court_session).data if hasattr(case, 'court_session') else None,
+            'court_sessions': CourtSessionSerializer(case.court_sessions.order_by('-id'), many=True).data,
         }
         return Response(payload)
 
     def perform_create(self, serializer):
         case = serializer.validated_data['case']
-        if case.status != Case.Status.SENT_TO_COURT:
-            raise PermissionDenied('Case must be in sent_to_court status before trial.')
+        if case.status not in [Case.Status.SENT_TO_COURT]:
+            raise PermissionDenied('Case must be in sent_to_court status before trial verdict.')
+        convicted_suspect = serializer.validated_data.get('convicted_suspect')
+        verdict = serializer.validated_data.get('verdict')
+        if not convicted_suspect:
+            raise PermissionDenied('convicted_suspect is required.')
+        if convicted_suspect.case_id != case.id:
+            raise PermissionDenied('convicted_suspect must belong to this case.')
         session = serializer.save(judge=self.request.user)
-        case = session.case
-        case.status = Case.Status.CLOSED
-        case.save(update_fields=['status', 'updated_at'])
 
-        suspects = Suspect.objects.filter(case=case)
         if session.verdict == CourtSession.Verdict.GUILTY:
-            suspects.update(status=Suspect.Status.CRIMINAL)
+            convicted_suspect.status = Suspect.Status.CRIMINAL
+            convicted_suspect.save(update_fields=['status'])
         else:
-            suspects.update(status=Suspect.Status.CLEARED)
+            convicted_suspect.status = Suspect.Status.CLEARED
+            convicted_suspect.save(update_fields=['status'])
+
+        total_suspects = Suspect.objects.filter(case=case).count()
+        finalized_suspects = CourtSession.objects.filter(case=case).values('convicted_suspect_id').distinct().count()
+        if total_suspects == 0 or finalized_suspects >= total_suspects:
+            case.status = Case.Status.CLOSED
+            case.save(update_fields=['status', 'updated_at'])

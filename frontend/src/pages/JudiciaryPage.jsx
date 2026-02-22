@@ -10,6 +10,7 @@ export default function JudiciaryPage() {
   const [form, setForm] = useState({
     case: '',
     verdict: 'guilty',
+    convicted_suspect: '',
     punishment_title: '',
     punishment_description: '',
   })
@@ -63,17 +64,26 @@ export default function JudiciaryPage() {
       setMessage('Punishment title is required for guilty verdict.')
       return
     }
+    if (!form.convicted_suspect) {
+      setMessage('Select suspect for this verdict.')
+      return
+    }
     try {
       await api.post('/judiciary/court-sessions/', {
         case: Number(form.case),
         verdict: form.verdict,
+        convicted_suspect: Number(form.convicted_suspect),
         punishment_title: form.punishment_title,
         punishment_description: form.punishment_description,
       })
       setMessage('Final court verdict registered.')
-      setForm({ case: '', verdict: 'guilty', punishment_title: '', punishment_description: '' })
+      setForm((prev) => ({ ...prev, convicted_suspect: '', punishment_title: '', punishment_description: '' }))
       loadSessions()
       loadCases()
+      if (form.case) {
+        const res = await api.get(`/judiciary/court-sessions/case_summary/?case_id=${form.case}`)
+        setSummary(res.data)
+      }
     } catch (err) {
       setMessage(err?.response?.data?.detail || 'Failed to register verdict')
     }
@@ -113,6 +123,15 @@ export default function JudiciaryPage() {
               ))}
             </ul>
 
+            <div><strong>Complainants:</strong> {(summary.complainant_details || []).length}</div>
+            <ul className="list">
+              {(summary.complainant_details || []).map((c) => (
+                <li key={c.id}>
+                  #{c.user?.id} {c.user?.first_name} {c.user?.last_name} ({c.user?.username}) | national_id: {c.user?.national_id || '-'} | status: {c.status}
+                </li>
+              ))}
+            </ul>
+
             <div><strong>Interrogations:</strong> {(summary.interrogations || []).length}</div>
             <ul className="list">
               {(summary.interrogations || []).map((i) => (
@@ -137,7 +156,10 @@ export default function JudiciaryPage() {
       <div className="panel">
         <h3>Register Final Verdict</h3>
         <div style={{ display: 'grid', gap: 8 }}>
-          <select value={form.case} onChange={(e) => setForm({ ...form, case: e.target.value })}>
+          <select value={form.case} onChange={(e) => {
+            setForm({ ...form, case: e.target.value, convicted_suspect: '' })
+            setSelectedCaseId(e.target.value)
+          }}>
             <option value="">Select sent-to-court case</option>
             {cases.filter((c) => c.status === 'sent_to_court').map((c) => (
               <option key={c.id} value={c.id}>Case #{c.id} - {c.title}</option>
@@ -146,6 +168,12 @@ export default function JudiciaryPage() {
           <select value={form.verdict} onChange={(e) => setForm({ ...form, verdict: e.target.value })}>
             <option value="guilty">Guilty</option>
             <option value="not_guilty">Not Guilty</option>
+          </select>
+          <select value={form.convicted_suspect} onChange={(e) => setForm({ ...form, convicted_suspect: e.target.value })}>
+            <option value="">Select suspect</option>
+            {(summary?.case?.id === Number(form.case) || String(summary?.case?.id) === String(form.case) ? (summary?.suspects || []) : []).map((s) => (
+              <option key={s.id} value={s.id}>#{s.id} {s.full_name} ({s.status})</option>
+            ))}
           </select>
           <input
             placeholder="Punishment title"
@@ -165,20 +193,21 @@ export default function JudiciaryPage() {
         <h3>Court Sessions</h3>
         <table className="table">
           <thead>
-            <tr><th>ID</th><th>Case</th><th>Verdict</th><th>Punishment</th><th>Created</th></tr>
+            <tr><th>ID</th><th>Case</th><th>Suspect</th><th>Verdict</th><th>Punishment</th><th>Created</th></tr>
           </thead>
           <tbody>
             {sessions.map((s) => (
               <tr key={s.id}>
                 <td>{s.id}</td>
                 <td>{s.case}</td>
+                <td>{s.convicted_suspect_name || s.convicted_suspect || '-'}</td>
                 <td>{s.verdict}</td>
                 <td>{s.punishment_title || '-'}</td>
                 <td>{new Date(s.created_at).toLocaleString()}</td>
               </tr>
             ))}
             {sessions.length === 0 && (
-              <tr><td colSpan="5">No court sessions yet.</td></tr>
+              <tr><td colSpan="6">No court sessions yet.</td></tr>
             )}
           </tbody>
         </table>

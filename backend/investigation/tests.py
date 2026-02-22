@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from cases.models import Case
@@ -320,3 +321,64 @@ class InterrogationFlowTests(APITestCase):
 
         self.case.refresh_from_db()
         self.assertEqual(self.case.status, Case.Status.INVESTIGATING)
+
+
+class HighAlertRankingTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='high_alert_user',
+            password='Strong12345',
+            email='ha@example.com',
+            phone='09131112222',
+            national_id='5001',
+        )
+        self.client.force_authenticate(self.user)
+
+    def test_high_alert_formula_and_sorting(self):
+        # Person A => Lj=40, Di=4 => score=160, reward=3,200,000,000
+        case_a_open = Case.objects.create(
+            title='A-open',
+            description='x',
+            source=Case.Source.SCENE,
+            status=Case.Status.OPEN,
+            severity=Case.Severity.CRITICAL,
+            created_by=self.user,
+        )
+        a = Suspect.objects.create(case=case_a_open, full_name='Person A', national_id='A001', status=Suspect.Status.WANTED)
+        a.marked_at = timezone.now() - timezone.timedelta(days=40)
+        a.save(update_fields=['marked_at'])
+
+        # Person B => Lj=31, Di=2 => score=62
+        case_b_open = Case.objects.create(
+            title='B-open',
+            description='x',
+            source=Case.Source.SCENE,
+            status=Case.Status.OPEN,
+            severity=Case.Severity.LEVEL_2,
+            created_by=self.user,
+        )
+        b = Suspect.objects.create(case=case_b_open, full_name='Person B', national_id='B001', status=Suspect.Status.WANTED)
+        b.marked_at = timezone.now() - timezone.timedelta(days=31)
+        b.save(update_fields=['marked_at'])
+
+        # Person C not high-alert => Lj=10
+        case_c_open = Case.objects.create(
+            title='C-open',
+            description='x',
+            source=Case.Source.SCENE,
+            status=Case.Status.OPEN,
+            severity=Case.Severity.LEVEL_1,
+            created_by=self.user,
+        )
+        c = Suspect.objects.create(case=case_c_open, full_name='Person C', national_id='C001', status=Suspect.Status.WANTED)
+        c.marked_at = timezone.now() - timezone.timedelta(days=10)
+        c.save(update_fields=['marked_at'])
+
+        resp = self.client.get('/api/investigation/high-alert/')
+        self.assertEqual(resp.status_code, 200)
+        rows = resp.data
+        self.assertEqual(len(rows), 2)
+        self.assertGreaterEqual(rows[0]['rank_score'], rows[1]['rank_score'])
+        self.assertEqual(rows[0]['full_name'], 'Person A')
+        self.assertEqual(rows[0]['rank_score'], 160)
+        self.assertEqual(rows[0]['reward_irr'], 3_200_000_000)
