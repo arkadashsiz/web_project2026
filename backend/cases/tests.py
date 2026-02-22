@@ -274,6 +274,39 @@ class CasesFlowTest(APITestCase):
         resp = self.client.post(f"/api/cases/cases/{case['id']}/assign_detective/", {'detective_id': self.user.id}, format='json')
         self.assertEqual(resp.status_code, 403)
 
+    def test_assign_detective_rejects_non_detective_capable_user(self):
+        manager = User.objects.create_user(
+            username='manager_assign',
+            password='VeryStrong123',
+            email='managerassign@example.com',
+            phone='09130000099',
+            national_id='3099',
+        )
+        manager_role = Role.objects.create(name='manager_assign_role')
+        RolePermission.objects.create(role=manager_role, action='case.assign_detective')
+        RolePermission.objects.create(role=manager_role, action='case.read_all')
+        UserRole.objects.create(user=manager, role=manager_role)
+
+        target = User.objects.create_user(
+            username='non_det_target',
+            password='VeryStrong123',
+            email='nondet@example.com',
+            phone='09130000100',
+            national_id='3100',
+        )
+        case = Case.objects.create(
+            title='Need detective',
+            description='desc',
+            source=Case.Source.SCENE,
+            status=Case.Status.OPEN,
+            severity=Case.Severity.LEVEL_2,
+            created_by=self.user,
+        )
+
+        self.client.force_authenticate(user=manager)
+        resp = self.client.post(f"/api/cases/cases/{case.id}/assign_detective/", {'detective_id': target.id}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
     def test_cadet_reject_must_have_error_message(self):
         case = self.client.post('/api/cases/cases/submit_complaint/', {
             'title': 'Complaint', 'description': 'desc', 'severity': 1,

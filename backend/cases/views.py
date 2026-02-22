@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.db.models import Q
 from rest_framework import decorators, permissions, status, viewsets
 from rest_framework.response import Response
@@ -10,6 +11,8 @@ from .serializers import (
     CaseComplainantSerializer,
     CaseWitnessSerializer,
 )
+
+User = get_user_model()
 
 
 def log_case(case, user, action, details=''):
@@ -336,6 +339,11 @@ class CaseViewSet(viewsets.ModelViewSet):
         detective_id = request.data.get('detective_id')
         if detective_id is None:
             return Response({'detail': 'detective_id required'}, status=400)
+        candidate = User.objects.filter(id=detective_id).first()
+        if not candidate:
+            return Response({'detail': 'Detective user not found'}, status=404)
+        if not (candidate.is_superuser or user_has_action(candidate, 'investigation.board.manage')):
+            return Response({'detail': 'Selected user is not detective-capable'}, status=400)
 
         case.assigned_detective_id = detective_id
         case.status = Case.Status.INVESTIGATING

@@ -38,3 +38,10 @@ class JudiciaryFlowTest(APITestCase):
         self.suspect.refresh_from_db()
         self.assertEqual(self.case.status, Case.Status.CLOSED)
         self.assertEqual(self.suspect.status, Suspect.Status.CRIMINAL)
+
+    def test_case_summary_endpoint(self):
+        resp = self.client.get(f'/api/judiciary/court-sessions/case_summary/?case_id={self.case.id}')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['case']['id'], self.case.id)
+        self.assertIn('involved_members', resp.data)
+        self.assertIn('evidence', resp.data)

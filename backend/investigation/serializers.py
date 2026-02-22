@@ -35,6 +35,14 @@ class SuspectSerializer(serializers.ModelSerializer):
 
 
 class InterrogationSerializer(serializers.ModelSerializer):
+    def validate(self, attrs):
+        for field in ['detective_score', 'sergeant_score', 'captain_score']:
+            if field in attrs and attrs[field] is not None:
+                val = int(attrs[field])
+                if val < 1 or val > 10:
+                    raise serializers.ValidationError({field: 'Score must be between 1 and 10.'})
+        return attrs
+
     class Meta:
         model = Interrogation
         fields = '__all__'

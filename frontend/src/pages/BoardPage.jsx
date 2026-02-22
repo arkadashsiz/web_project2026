@@ -11,8 +11,12 @@ export default function BoardPage() {
   )
   const isSergeant = user?.is_superuser || roleNames.includes('sergeant') || roleNames.includes('sergent') || roleNames.includes('sargent')
   const isDetective = user?.is_superuser || roleNames.includes('detective')
+  const isCaptain = user?.is_superuser || roleNames.includes('captain')
+  const isChief = user?.is_superuser || roleNames.includes('chief')
+  const canReviewCases = isSergeant || isCaptain || isChief || user?.is_superuser
   const [openCases, setOpenCases] = useState([])
   const [assignedCases, setAssignedCases] = useState([])
+  const [reviewCases, setReviewCases] = useState([])
   const [context, setContext] = useState(null)
   const [message, setMessage] = useState('')
 
@@ -31,6 +35,16 @@ export default function BoardPage() {
   const [submissions, setSubmissions] = useState([])
   const [sergeantSubmissions, setSergeantSubmissions] = useState([])
   const [sergeantNote, setSergeantNote] = useState('')
+  const [interrogations, setInterrogations] = useState([])
+  const [interrogationForm, setInterrogationForm] = useState({
+    suspect_id: '',
+    detective_score: 5,
+    detective_note: '',
+    sergeant_score: 5,
+    sergeant_note: '',
+  })
+  const [captainForm, setCaptainForm] = useState({})
+  const [chiefForm, setChiefForm] = useState({})
 
   const boardRef = useRef(null)
   const dragState = useRef({ nodeId: null, offsetX: 0, offsetY: 0 })
@@ -46,17 +60,19 @@ export default function BoardPage() {
       const rows = res.data.results || []
       setOpenCases(rows.filter((c) => c.status === 'open' && !c.assigned_detective))
       setAssignedCases(rows.filter((c) => c.assigned_detective === user?.id))
+      setReviewCases(rows.filter((c) => ['investigating', 'sent_to_court', 'open'].includes(c.status)))
     })
   }
 
   useEffect(() => {
-    if (isDetective) {
+    if (isDetective || canReviewCases) {
       loadCases()
     } else {
       setOpenCases([])
       setAssignedCases([])
+      setReviewCases([])
     }
-  }, [user?.id, isDetective])
+  }, [user?.id, isDetective, canReviewCases])
 
   useEffect(() => {
     if (!isSergeant) {
@@ -77,6 +93,7 @@ export default function BoardPage() {
       setSelectedSuspectIds([])
       setSubmissionReason('')
       loadSubmissions(caseId)
+      loadInterrogations(caseId)
     } catch (err) {
       setMessage(err?.response?.data?.detail || 'Failed to open board')
     }
@@ -97,6 +114,15 @@ export default function BoardPage() {
       setSergeantSubmissions((res.data.results || []).filter((x) => x.status === 'pending'))
     } catch {
       setSergeantSubmissions([])
+    }
+  }
+
+  const loadInterrogations = async (caseId) => {
+    try {
+      const res = await api.get(`/investigation/interrogations/?case_id=${caseId}`)
+      setInterrogations(res.data.results || [])
+    } catch {
+      setInterrogations([])
     }
   }
 
@@ -326,6 +352,64 @@ export default function BoardPage() {
     }
   }
 
+  const recordInterrogation = async () => {
+    if (!context || !interrogationForm.suspect_id) {
+      setMessage('Select suspect to record interrogation.')
+      return
+    }
+
+    const payload = {
+      case_id: context.case.id,
+      suspect_id: Number(interrogationForm.suspect_id),
+    }
+    if (isDetective) {
+      payload.detective_score = Number(interrogationForm.detective_score)
+      payload.detective_note = interrogationForm.detective_note
+    }
+    if (isSergeant && !isDetective) {
+      payload.sergeant_score = Number(interrogationForm.sergeant_score)
+      payload.sergeant_note = interrogationForm.sergeant_note
+    }
+
+    try {
+      await api.post('/investigation/interrogations/record_assessment/', payload)
+      setMessage('Interrogation assessment saved.')
+      loadInterrogations(context.case.id)
+    } catch (err) {
+      setMessage(err?.response?.data?.detail || 'Failed to save interrogation assessment')
+    }
+  }
+
+  const captainDecision = async (interrogationId, approved) => {
+    const score = captainForm[interrogationId]?.score
+    const note = captainForm[interrogationId]?.note || ''
+    try {
+      await api.post(`/investigation/interrogations/${interrogationId}/captain_decision/`, {
+        approved,
+        captain_score: Number(score),
+        captain_note: note,
+      })
+      setMessage(approved ? 'Captain approved to trial.' : 'Captain rejected and returned to investigation.')
+      loadInterrogations(context.case.id)
+    } catch (err) {
+      setMessage(err?.response?.data?.detail || 'Failed to save captain decision')
+    }
+  }
+
+  const chiefReview = async (interrogationId, approved) => {
+    const note = chiefForm[interrogationId]?.note || ''
+    try {
+      await api.post(`/investigation/interrogations/${interrogationId}/chief_review/`, {
+        approved,
+        chief_note: note,
+      })
+      setMessage(approved ? 'Chief approved and case sent to court.' : 'Chief rejected captain decision.')
+      loadInterrogations(context.case.id)
+    } catch (err) {
+      setMessage(err?.response?.data?.detail || 'Failed to submit chief review')
+    }
+  }
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       {isDetective && (
@@ -339,6 +423,21 @@ export default function BoardPage() {
             </li>
           ))}
           {openCases.length === 0 && <li>No open unassigned cases.</li>}
+        </ul>
+      </div>
+      )}
+
+      {!isDetective && canReviewCases && (
+      <div className="panel">
+        <h3>Case Boards For Review</h3>
+        <ul className="list">
+          {reviewCases.map((c) => (
+            <li key={c.id}>
+              Case #{c.id} - {c.title} - {c.status}
+              <button type="button" style={{ marginLeft: 8 }} onClick={() => openBoard(c.id)}>Open Board</button>
+            </li>
+          ))}
+          {reviewCases.length === 0 && <li>No cases available for review.</li>}
         </ul>
       </div>
       )}
@@ -373,6 +472,7 @@ export default function BoardPage() {
                     onChange={(e) => setSergeantNote(e.target.value)}
                     style={{ maxWidth: 320 }}
                   />
+                  <button type="button" onClick={() => openBoard(s.case)}>Open Case Board</button>
                   <button type="button" onClick={() => reviewSubmission(s.id, true, s.case)}>Approve</button>
                   <button type="button" onClick={() => reviewSubmission(s.id, false, s.case)}>Reject</button>
                 </div>
@@ -478,6 +578,106 @@ export default function BoardPage() {
                 </li>
               ))}
               {submissions.length === 0 && <li>No suspect submissions yet.</li>}
+            </ul>
+          </div>
+
+          <div style={{ border: '1px solid #d8deea', borderRadius: 8, padding: 10, marginBottom: 10 }}>
+            <h4>Post-Arrest Suspect Scoring (1-10)</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8, marginBottom: 8 }}>
+              <select
+                value={interrogationForm.suspect_id}
+                onChange={(e) => setInterrogationForm({ ...interrogationForm, suspect_id: e.target.value })}
+              >
+                <option value="">Select arrested suspect</option>
+                {(context.suspects || []).filter((s) => s.status === 'arrested').map((s) => (
+                  <option key={s.id} value={s.id}>#{s.id} {s.full_name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8, marginTop: 8 }}>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={interrogationForm.detective_score}
+                onChange={(e) => setInterrogationForm({ ...interrogationForm, detective_score: e.target.value })}
+                disabled={!isDetective}
+                placeholder="Detective score (1-10)"
+              />
+              <input
+                value={interrogationForm.detective_note}
+                onChange={(e) => setInterrogationForm({ ...interrogationForm, detective_note: e.target.value })}
+                disabled={!isDetective}
+                placeholder="Detective statement"
+              />
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={interrogationForm.sergeant_score}
+                onChange={(e) => setInterrogationForm({ ...interrogationForm, sergeant_score: e.target.value })}
+                disabled={!isSergeant}
+                placeholder="Sergeant score (1-10)"
+              />
+              <input
+                value={interrogationForm.sergeant_note}
+                onChange={(e) => setInterrogationForm({ ...interrogationForm, sergeant_note: e.target.value })}
+                disabled={!isSergeant}
+                placeholder="Sergeant statement"
+              />
+            </div>
+            {(isDetective || isSergeant) && (
+              <button type="button" style={{ marginTop: 8 }} onClick={recordInterrogation}>
+                Save Interrogation Assessment
+              </button>
+            )}
+
+            <ul className="list" style={{ marginTop: 10 }}>
+              {interrogations.map((it) => (
+                <li key={it.id}>
+                  Interrogation #{it.id} | suspect #{it.suspect} | D:{it.detective_score}/10 S:{it.sergeant_score}/10
+                  <div>Detective statement: {it.detective_note || '-'}</div>
+                  <div>Sergeant statement: {it.sergeant_note || '-'}</div>
+                  <div>Captain decision: {it.captain_decision} / outcome: {it.captain_outcome} {it.captain_score ? `(${it.captain_score}/10)` : ''}</div>
+                  <div>Chief decision: {it.chief_decision}</div>
+
+                  {isCaptain && it.captain_decision === 'pending' && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        placeholder="Captain final score"
+                        value={captainForm[it.id]?.score || ''}
+                        onChange={(e) => setCaptainForm((prev) => ({ ...prev, [it.id]: { ...(prev[it.id] || {}), score: e.target.value } }))}
+                        style={{ maxWidth: 180 }}
+                      />
+                      <input
+                        placeholder="Captain final note"
+                        value={captainForm[it.id]?.note || ''}
+                        onChange={(e) => setCaptainForm((prev) => ({ ...prev, [it.id]: { ...(prev[it.id] || {}), note: e.target.value } }))}
+                        style={{ maxWidth: 320 }}
+                      />
+                      <button type="button" onClick={() => captainDecision(it.id, true)}>Approve To Trial</button>
+                      <button type="button" onClick={() => captainDecision(it.id, false)}>Reject (Back To Investigation)</button>
+                    </div>
+                  )}
+
+                  {isChief && it.chief_decision === 'pending' && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                      <input
+                        placeholder="Chief review note"
+                        value={chiefForm[it.id]?.note || ''}
+                        onChange={(e) => setChiefForm((prev) => ({ ...prev, [it.id]: { ...(prev[it.id] || {}), note: e.target.value } }))}
+                        style={{ maxWidth: 320 }}
+                      />
+                      <button type="button" onClick={() => chiefReview(it.id, true)}>Approve Captain</button>
+                      <button type="button" onClick={() => chiefReview(it.id, false)}>Reject Captain</button>
+                    </div>
+                  )}
+                </li>
+              ))}
+              {interrogations.length === 0 && <li>No interrogations recorded for this case.</li>}
             </ul>
           </div>
 

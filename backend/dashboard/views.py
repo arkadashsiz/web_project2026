@@ -20,6 +20,8 @@ def _modules_for_user(user):
         modules.append({'key': 'detective_board', 'title': 'Detective Board', 'path': '/board'})
     if user.is_superuser or user_has_action(user, 'suspect.manage'):
         modules.append({'key': 'sergeant_review', 'title': 'Suspect Reviews', 'path': '/board'})
+    if user.is_superuser or user_has_action(user, 'interrogation.captain_decision') or user_has_action(user, 'interrogation.chief_review'):
+        modules.append({'key': 'interrogation_reviews', 'title': 'Interrogation Reviews', 'path': '/board'})
 
     if user.is_superuser or role_names.intersection({'captain', 'chief', 'judge'}) or user_has_action(user, 'case.send_to_court'):
         modules.append({'key': 'reports', 'title': 'Global Reports', 'path': '/reports'})

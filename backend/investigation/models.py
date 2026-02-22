@@ -52,14 +52,45 @@ class Suspect(models.Model):
 
 
 class Interrogation(models.Model):
+    class CaptainDecision(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        SUBMITTED = 'submitted', 'Submitted'
+
+    class CaptainOutcome(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        APPROVED = 'approved', 'Approved To Trial'
+        REJECTED = 'rejected', 'Rejected'
+
+    class ChiefDecision(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        APPROVED = 'approved', 'Approved'
+        REJECTED = 'rejected', 'Rejected'
+        NOT_REQUIRED = 'not_required', 'Not Required'
+
     case = models.ForeignKey('cases.Case', on_delete=models.CASCADE, related_name='interrogations')
     suspect = models.ForeignKey(Suspect, on_delete=models.CASCADE, related_name='interrogations')
     detective = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='detective_interrogations')
     sergeant = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='sergeant_interrogations')
+    transcription = models.TextField(blank=True)
+    key_values = models.JSONField(default=dict, blank=True)
+    detective_note = models.TextField(blank=True)
+    sergeant_note = models.TextField(blank=True)
     detective_score = models.PositiveSmallIntegerField(default=1)
     sergeant_score = models.PositiveSmallIntegerField(default=1)
     captain_score = models.PositiveSmallIntegerField(null=True, blank=True)
     captain_note = models.TextField(blank=True)
+    captain_decision = models.CharField(max_length=20, choices=CaptainDecision.choices, default=CaptainDecision.PENDING)
+    captain_outcome = models.CharField(max_length=20, choices=CaptainOutcome.choices, default=CaptainOutcome.PENDING)
+    captain_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='captain_interrogation_reviews'
+    )
+    captain_decided_at = models.DateTimeField(null=True, blank=True)
+    chief_decision = models.CharField(max_length=20, choices=ChiefDecision.choices, default=ChiefDecision.NOT_REQUIRED)
+    chief_note = models.TextField(blank=True)
+    chief_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='chief_interrogation_reviews'
+    )
+    chief_decided_at = models.DateTimeField(null=True, blank=True)
     chief_reviewed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
