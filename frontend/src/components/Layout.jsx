@@ -52,7 +52,7 @@ export default function Layout({ children }) {
         <header className="topbar">
           <div>
             <h1>Police Automation System</h1>
-            <p>Los Angeles Central Operations</p>
+            <p>Doulab center for love and friendship </p>
           </div>
           <div className="topbar-actions">
             <button onClick={toggleDarkMode} className="theme-toggle" title="Toggle dark mode">
