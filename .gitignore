@@ -2,6 +2,7 @@
 .DS_Store
 Thumbs.db
 temp
+Docker_tests/venv
 # Editor/IDE
 .vscode/
 .idea/
