@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 import api from '../api/client'
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth()
+  const { isDarkMode, toggleDarkMode } = useTheme()
   const navigate = useNavigate()
   const [modules, setModules] = useState([])
 
@@ -37,7 +39,7 @@ export default function Layout({ children }) {
   }, [user, modules])
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${isDarkMode ? 'dark' : ''}`}>
       <aside className="sidebar">
         <Link to="/" className="brand">City Police</Link>
         <nav>
@@ -53,6 +55,9 @@ export default function Layout({ children }) {
             <p>Los Angeles Central Operations</p>
           </div>
           <div className="topbar-actions">
+            <button onClick={toggleDarkMode} className="theme-toggle" title="Toggle dark mode">
+              {isDarkMode ? '☀️' : '🌙'}
+            </button>
             <span>{user ? user.username : 'Guest'}</span>
             {!user && <Link className="btn-link" to="/login">Login</Link>}
             {!user && <Link className="btn-link secondary" to="/register">Register</Link>}
