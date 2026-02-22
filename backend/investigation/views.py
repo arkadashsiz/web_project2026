@@ -1,10 +1,19 @@
 from collections import defaultdict
 
 from django.utils import timezone
-from rest_framework import decorators, permissions, viewsets
+from rest_framework import decorators, permissions, status, viewsets
 from rest_framework.response import Response
 
 from cases.models import Case
+from cases.serializers import CaseSerializer, CaseLogSerializer
+from evidence.models import WitnessEvidence, BiologicalEvidence, VehicleEvidence, IdentificationEvidence, OtherEvidence
+from evidence.serializers import (
+    WitnessEvidenceSerializer,
+    BiologicalEvidenceSerializer,
+    VehicleEvidenceSerializer,
+    IdentificationEvidenceSerializer,
+    OtherEvidenceSerializer,
+)
 from rbac.permissions import user_has_action
 from .models import DetectiveBoard, BoardNode, BoardEdge, Suspect, Interrogation, Notification
 from .serializers import (
@@ -30,6 +39,93 @@ class DetectiveBoardViewSet(viewsets.ModelViewSet):
         super().check_permissions(request)
         if not require_action(request.user, 'investigation.board.manage'):
             self.permission_denied(request, message='No permission')
+
+    def _sync_board_nodes(self, board, case):
+        existing_keys = set(
+            board.nodes.values_list('kind', 'reference_id', 'label')
+        )
+
+        # Layout counters for new nodes only.
+        x = 80
+        y = 80
+
+        def add_if_missing(kind, ref_id, label, px, py):
+            key = (kind, ref_id, label)
+            if key in existing_keys:
+                return
+            BoardNode.objects.create(
+                board=board,
+                label=label,
+                kind=kind,
+                reference_id=ref_id,
+                x=px,
+                y=py,
+            )
+            existing_keys.add(key)
+
+        suspects = Suspect.objects.filter(case=case)
+        witness_evidence = WitnessEvidence.objects.filter(case=case)
+        biological_evidence = BiologicalEvidence.objects.filter(case=case)
+        vehicle_evidence = VehicleEvidence.objects.filter(case=case)
+        identification_evidence = IdentificationEvidence.objects.filter(case=case)
+        other_evidence = OtherEvidence.objects.filter(case=case)
+
+        for s in suspects:
+            add_if_missing(BoardNode.Kind.SUSPECT, s.id, f'Suspect: {s.full_name}', x, y)
+            x += 180
+
+        def add_evidence_nodes(rows, prefix):
+            nonlocal x
+            for row in rows:
+                add_if_missing(BoardNode.Kind.EVIDENCE, row.id, f'{prefix}: {row.title}', x, y + 150)
+                x += 180
+
+        add_evidence_nodes(witness_evidence, 'Witness')
+        add_evidence_nodes(biological_evidence, 'Biological')
+        add_evidence_nodes(vehicle_evidence, 'Vehicle')
+        add_evidence_nodes(identification_evidence, 'Identification')
+        add_evidence_nodes(other_evidence, 'Other')
+
+    @decorators.action(detail=False, methods=['post'])
+    def open_case_board(self, request):
+        case_id = request.data.get('case_id')
+        if not case_id:
+            return Response({'detail': 'case_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        case = Case.objects.filter(id=case_id).select_related('assigned_detective', 'created_by').first()
+        if not case:
+            return Response({'detail': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        can_access = (
+            request.user.is_superuser
+            or user_has_action(request.user, 'case.read_all')
+            or case.assigned_detective_id == request.user.id
+        )
+        if not can_access:
+            return Response({'detail': 'Only assigned detective can open this board'}, status=status.HTTP_403_FORBIDDEN)
+
+        board, _ = DetectiveBoard.objects.get_or_create(case=case, defaults={'detective': request.user})
+        if board.detective_id != request.user.id and (request.user.is_superuser or case.assigned_detective_id == request.user.id):
+            board.detective = request.user
+            board.save(update_fields=['detective', 'updated_at'])
+
+        # Sync missing suspect/evidence cards every time board is opened.
+        self._sync_board_nodes(board, case)
+
+        context = {
+            'board': DetectiveBoardSerializer(board).data,
+            'case': CaseSerializer(case).data,
+            'suspects': SuspectSerializer(Suspect.objects.filter(case=case), many=True).data,
+            'evidence': {
+                'witness': WitnessEvidenceSerializer(WitnessEvidence.objects.filter(case=case), many=True).data,
+                'biological': BiologicalEvidenceSerializer(BiologicalEvidence.objects.filter(case=case), many=True).data,
+                'vehicle': VehicleEvidenceSerializer(VehicleEvidence.objects.filter(case=case), many=True).data,
+                'identification': IdentificationEvidenceSerializer(IdentificationEvidence.objects.filter(case=case), many=True).data,
+                'other': OtherEvidenceSerializer(OtherEvidence.objects.filter(case=case), many=True).data,
+            },
+            'logs': CaseLogSerializer(case.logs.all(), many=True).data,
+        }
+        return Response(context)
 
 
 class BoardNodeViewSet(viewsets.ModelViewSet):

@@ -353,6 +353,23 @@ class CaseViewSet(viewsets.ModelViewSet):
         log_case(case, request.user, 'case.sent_to_court')
         return Response(self.get_serializer(case).data)
 
+    @decorators.action(detail=True, methods=['post'])
+    def detective_take_case(self, request, pk=None):
+        if not has_any_action(request.user, ['investigation.board.manage']):
+            return Response({'detail': 'No permission'}, status=403)
+
+        case = self.get_object()
+        if case.status != Case.Status.OPEN:
+            return Response({'detail': 'Only open cases can be taken by detective'}, status=400)
+        if case.assigned_detective_id and case.assigned_detective_id != request.user.id:
+            return Response({'detail': 'Case is already assigned to another detective'}, status=400)
+
+        case.assigned_detective = request.user
+        case.status = Case.Status.INVESTIGATING
+        case.save(update_fields=['assigned_detective', 'status', 'updated_at'])
+        log_case(case, request.user, 'case.detective.taken')
+        return Response(self.get_serializer(case).data)
+
 
 class ComplaintSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ComplaintSubmission.objects.select_related('case', 'complainant').all()

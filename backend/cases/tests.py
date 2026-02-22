@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 
-from cases.models import CaseComplainant, ComplaintSubmission
+from cases.models import Case, CaseComplainant, ComplaintSubmission
 from rbac.models import Role, RolePermission, UserRole
 
 User = get_user_model()
@@ -237,6 +237,34 @@ class CasesFlowTest(APITestCase):
             'scene_reported_at': '2026-02-21T10:00',
         }, format='json')
         self.assertEqual(resp.status_code, 201)
+
+    def test_detective_can_take_open_case(self):
+        det = User.objects.create_user(
+            username='det_take',
+            password='VeryStrong123',
+            email='dettake@example.com',
+            phone='09130000016',
+            national_id='3016',
+        )
+        d_role = Role.objects.create(name='detective_take_role')
+        RolePermission.objects.create(role=d_role, action='investigation.board.manage')
+        RolePermission.objects.create(role=d_role, action='case.read_all')
+        UserRole.objects.create(user=det, role=d_role)
+
+        case = Case.objects.create(
+            title='Open case',
+            description='desc',
+            source=Case.Source.SCENE,
+            status=Case.Status.OPEN,
+            severity=Case.Severity.LEVEL_2,
+            created_by=self.user,
+        )
+
+        self.client.force_authenticate(user=det)
+        resp = self.client.post(f'/api/cases/cases/{case.id}/detective_take_case/', {}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['assigned_detective'], det.id)
+        self.assertEqual(resp.data['status'], 'investigating')
 
     def test_assign_detective_requires_permission(self):
         case = self.client.post('/api/cases/cases/submit_complaint/', {

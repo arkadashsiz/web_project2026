@@ -1,59 +1,76 @@
-from datetime import timedelta
-
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from cases.models import Case
+from evidence.models import WitnessEvidence
 from rbac.models import Role, RolePermission, UserRole
 
 User = get_user_model()
 
 
-class InvestigationAPITest(APITestCase):
+class BoardOpenCaseTests(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(
-            username='detective',
+        self.detective = User.objects.create_user(
+            username='det_board',
             password='Strong12345',
-            email='d@example.com',
-            phone='09124444444',
-            national_id='444',
+            email='detb@example.com',
+            phone='09134444444',
+            national_id='3444',
         )
-        role = Role.objects.create(name='detective')
-        RolePermission.objects.create(role=role, action='suspect.manage')
-        UserRole.objects.create(user=self.user, role=role)
-        self.client.force_authenticate(self.user)
+        d_role = Role.objects.create(name='detective_board_role')
+        RolePermission.objects.create(role=d_role, action='investigation.board.manage')
+        UserRole.objects.create(user=self.detective, role=d_role)
 
         self.case = Case.objects.create(
-            title='Case A',
+            title='Case Board',
             description='desc',
-            source=Case.Source.SCENE,
-            status=Case.Status.OPEN,
-            severity=Case.Severity.LEVEL_1,
-            created_by=self.user,
+            source=Case.Source.COMPLAINT,
+            status=Case.Status.INVESTIGATING,
+            severity=Case.Severity.LEVEL_2,
+            created_by=self.detective,
+            assigned_detective=self.detective,
         )
 
-    def test_create_suspect(self):
-        resp = self.client.post('/api/investigation/suspects/', {
-            'case': self.case.id,
-            'full_name': 'John Doe',
-            'national_id': '9999',
-        }, format='json')
-        self.assertEqual(resp.status_code, 201)
+    def test_assigned_detective_can_open_case_board(self):
+        self.client.force_authenticate(self.detective)
+        resp = self.client.post('/api/investigation/boards/open_case_board/', {'case_id': self.case.id}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['case']['id'], self.case.id)
+        self.assertIn('board', resp.data)
+        self.assertIn('evidence', resp.data)
 
-    def test_high_alert_formula(self):
-        resp = self.client.post('/api/investigation/suspects/', {
-            'case': self.case.id,
-            'full_name': 'Old Suspect',
-            'national_id': '9988',
-        }, format='json')
-        sid = resp.data['id']
+    def test_non_assigned_detective_cannot_open(self):
+        other = User.objects.create_user(
+            username='det_other',
+            password='Strong12345',
+            email='deto@example.com',
+            phone='09135555555',
+            national_id='3555',
+        )
+        d_role2 = Role.objects.create(name='detective_board_role_2')
+        RolePermission.objects.create(role=d_role2, action='investigation.board.manage')
+        UserRole.objects.create(user=other, role=d_role2)
 
-        from investigation.models import Suspect
-        s = Suspect.objects.get(id=sid)
-        s.marked_at = timezone.now() - timedelta(days=40)
-        s.save(update_fields=['marked_at'])
+        self.client.force_authenticate(other)
+        resp = self.client.post('/api/investigation/boards/open_case_board/', {'case_id': self.case.id}, format='json')
+        self.assertEqual(resp.status_code, 403)
 
-        result = self.client.get('/api/investigation/high-alert/')
-        self.assertEqual(result.status_code, 200)
-        self.assertTrue(any(x['national_id'] == '9988' for x in result.data))
+    def test_open_board_syncs_new_evidence_cards(self):
+        self.client.force_authenticate(self.detective)
+        first = self.client.post('/api/investigation/boards/open_case_board/', {'case_id': self.case.id}, format='json')
+        self.assertEqual(first.status_code, 200)
+        initial_count = len(first.data['board']['nodes'])
+
+        WitnessEvidence.objects.create(
+            case=self.case,
+            title='Witness clip',
+            description='clip from local witness',
+            recorded_by=self.detective,
+            transcript='saw suspect running',
+        )
+
+        second = self.client.post('/api/investigation/boards/open_case_board/', {'case_id': self.case.id}, format='json')
+        self.assertEqual(second.status_code, 200)
+        self.assertGreater(len(second.data['board']['nodes']), initial_count)
+        labels = [n['label'] for n in second.data['board']['nodes']]
+        self.assertTrue(any('Witness: Witness clip' == lbl for lbl in labels))
