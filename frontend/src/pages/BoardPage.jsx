@@ -5,6 +5,12 @@ import { useAuth } from '../context/AuthContext'
 
 export default function BoardPage() {
   const { user } = useAuth()
+  const roleNames = useMemo(
+    () => (user?.roles || []).map((r) => (r || '').toLowerCase().trim().replace(/\s+/g, ' ')),
+    [user]
+  )
+  const isSergeant = user?.is_superuser || roleNames.includes('sergeant') || roleNames.includes('sergent') || roleNames.includes('sargent')
+  const isDetective = user?.is_superuser || roleNames.includes('detective')
   const [openCases, setOpenCases] = useState([])
   const [assignedCases, setAssignedCases] = useState([])
   const [context, setContext] = useState(null)
@@ -20,6 +26,11 @@ export default function BoardPage() {
     national_id: '',
     photo_url: '',
   })
+  const [selectedSuspectIds, setSelectedSuspectIds] = useState([])
+  const [submissionReason, setSubmissionReason] = useState('')
+  const [submissions, setSubmissions] = useState([])
+  const [sergeantSubmissions, setSergeantSubmissions] = useState([])
+  const [sergeantNote, setSergeantNote] = useState('')
 
   const boardRef = useRef(null)
   const dragState = useRef({ nodeId: null, offsetX: 0, offsetY: 0 })
@@ -39,8 +50,21 @@ export default function BoardPage() {
   }
 
   useEffect(() => {
-    loadCases()
-  }, [user?.id])
+    if (isDetective) {
+      loadCases()
+    } else {
+      setOpenCases([])
+      setAssignedCases([])
+    }
+  }, [user?.id, isDetective])
+
+  useEffect(() => {
+    if (!isSergeant) {
+      setSergeantSubmissions([])
+      return
+    }
+    loadSergeantSubmissions()
+  }, [user?.id, isSergeant])
 
   const openBoard = async (caseId) => {
     setMessage('')
@@ -50,8 +74,29 @@ export default function BoardPage() {
       setNodes(res.data.board.nodes || [])
       setEdges(res.data.board.edges || [])
       setSelectedNodeIds([])
+      setSelectedSuspectIds([])
+      setSubmissionReason('')
+      loadSubmissions(caseId)
     } catch (err) {
       setMessage(err?.response?.data?.detail || 'Failed to open board')
+    }
+  }
+
+  const loadSubmissions = async (caseId) => {
+    try {
+      const res = await api.get(`/investigation/suspect-submissions/?case_id=${caseId}`)
+      setSubmissions(res.data.results || [])
+    } catch {
+      setSubmissions([])
+    }
+  }
+
+  const loadSergeantSubmissions = async () => {
+    try {
+      const res = await api.get('/investigation/suspect-submissions/')
+      setSergeantSubmissions((res.data.results || []).filter((x) => x.status === 'pending'))
+    } catch {
+      setSergeantSubmissions([])
     }
   }
 
@@ -227,6 +272,10 @@ export default function BoardPage() {
       })
 
       setNodes((prev) => [...prev, node.data])
+      setContext((prev) => ({
+        ...prev,
+        suspects: [...(prev?.suspects || []), created.data],
+      }))
       setSuspectForm({ full_name: '', national_id: '', photo_url: '' })
       setMessage(`Suspect "${created.data.full_name}" added to case and board.`)
     } catch (err) {
@@ -234,8 +283,52 @@ export default function BoardPage() {
     }
   }
 
+  const toggleSuspect = (id) => {
+    setSelectedSuspectIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  const submitMainSuspects = async () => {
+    if (!context) return
+    if (selectedSuspectIds.length === 0 || !submissionReason.trim()) {
+      setMessage('Select main suspects and provide detective reason.')
+      return
+    }
+    try {
+      await api.post('/investigation/suspect-submissions/submit_main_suspects/', {
+        case_id: context.case.id,
+        suspect_ids: selectedSuspectIds,
+        detective_reason: submissionReason,
+      })
+      setMessage('Main suspects submitted to sergeant for review.')
+      setSelectedSuspectIds([])
+      setSubmissionReason('')
+      loadSubmissions(context.case.id)
+      loadSergeantSubmissions()
+    } catch (err) {
+      setMessage(err?.response?.data?.detail || 'Failed to submit main suspects')
+    }
+  }
+
+  const reviewSubmission = async (submissionId, approved, caseId = null) => {
+    try {
+      await api.post(`/investigation/suspect-submissions/${submissionId}/sergeant_review/`, {
+        approved,
+        message: sergeantNote,
+      })
+      setMessage(approved ? 'Sergeant approved submission; arrest process started.' : 'Sergeant rejected submission and notified detective.')
+      setSergeantNote('')
+      if (caseId) {
+        loadSubmissions(caseId)
+      }
+      loadSergeantSubmissions()
+    } catch (err) {
+      setMessage(err?.response?.data?.detail || 'Failed to review submission')
+    }
+  }
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
+      {isDetective && (
       <div className="panel">
         <h3>Open Cases From Case Management</h3>
         <ul className="list">
@@ -248,7 +341,9 @@ export default function BoardPage() {
           {openCases.length === 0 && <li>No open unassigned cases.</li>}
         </ul>
       </div>
+      )}
 
+      {isDetective && (
       <div className="panel">
         <h3>Assigned Cases For Detective</h3>
         <ul className="list">
@@ -261,6 +356,32 @@ export default function BoardPage() {
           {assignedCases.length === 0 && <li>No assigned cases.</li>}
         </ul>
       </div>
+      )}
+
+      {!context && isSergeant && (
+        <div className="panel">
+          <h3>Sergeant Review Queue</h3>
+          <ul className="list">
+            {sergeantSubmissions.map((s) => (
+              <li key={s.id}>
+                Submission #{s.id} | case #{s.case} | suspects: {(s.suspect_brief || []).map((x) => x.full_name).join(', ')}
+                <div>Reason: {s.detective_reason}</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                  <input
+                    placeholder="Sergeant review message"
+                    value={sergeantNote}
+                    onChange={(e) => setSergeantNote(e.target.value)}
+                    style={{ maxWidth: 320 }}
+                  />
+                  <button type="button" onClick={() => reviewSubmission(s.id, true, s.case)}>Approve</button>
+                  <button type="button" onClick={() => reviewSubmission(s.id, false, s.case)}>Reject</button>
+                </div>
+              </li>
+            ))}
+            {sergeantSubmissions.length === 0 && <li>No pending submissions right now.</li>}
+          </ul>
+        </div>
+      )}
 
       {message && <p className="error">{message}</p>}
 
@@ -306,6 +427,58 @@ export default function BoardPage() {
               onChange={(e) => setSuspectForm({ ...suspectForm, photo_url: e.target.value })}
             />
             <button type="button" onClick={addSuspect}>Add Suspect</button>
+          </div>
+
+          <div style={{ border: '1px solid #d8deea', borderRadius: 8, padding: 10, marginBottom: 10 }}>
+            <h4>Main Suspects Declaration (Detective → Sergeant)</h4>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {(context.suspects || []).map((s) => (
+                  <label key={s.id} style={{ border: '1px solid #d8deea', borderRadius: 8, padding: '4px 8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedSuspectIds.includes(s.id)}
+                      onChange={() => toggleSuspect(s.id)}
+                    />{' '}
+                    #{s.id} {s.full_name}
+                  </label>
+                ))}
+              </div>
+              <textarea
+                placeholder="Detective reasons and rationale for selected main suspects"
+                value={submissionReason}
+                onChange={(e) => setSubmissionReason(e.target.value)}
+              />
+              {isDetective && <button type="button" onClick={submitMainSuspects}>Submit Main Suspects To Sergeant</button>}
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid #d8deea', borderRadius: 8, padding: 10, marginBottom: 10 }}>
+            <h4>Sergeant Review Queue</h4>
+            <ul className="list">
+              {submissions.map((s) => (
+                <li key={s.id}>
+                  Submission #{s.id} | status: {s.status} | suspects: {(s.suspect_brief || []).map((x) => x.full_name).join(', ')}
+                  <div>Reason: {s.detective_reason}</div>
+                  {s.status === 'pending' && isSergeant && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                      <input
+                        placeholder="Sergeant review message"
+                        value={sergeantNote}
+                        onChange={(e) => setSergeantNote(e.target.value)}
+                        style={{ maxWidth: 320 }}
+                      />
+                      <button type="button" onClick={() => reviewSubmission(s.id, true, context.case.id)}>Approve</button>
+                      <button type="button" onClick={() => reviewSubmission(s.id, false, context.case.id)}>Reject</button>
+                    </div>
+                  )}
+                  {s.status !== 'pending' && (
+                    <div>Sergeant message: {s.sergeant_message || '-'}</div>
+                  )}
+                </li>
+              ))}
+              {submissions.length === 0 && <li>No suspect submissions yet.</li>}
+            </ul>
           </div>
 
           <div

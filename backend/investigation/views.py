@@ -1,5 +1,7 @@
 from collections import defaultdict
 
+from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import decorators, permissions, status, viewsets
 from rest_framework.response import Response
@@ -15,7 +17,7 @@ from evidence.serializers import (
     OtherEvidenceSerializer,
 )
 from rbac.permissions import user_has_action
-from .models import DetectiveBoard, BoardNode, BoardEdge, Suspect, Interrogation, Notification
+from .models import DetectiveBoard, BoardNode, BoardEdge, Suspect, Interrogation, Notification, SuspectSubmission
 from .serializers import (
     DetectiveBoardSerializer,
     BoardNodeSerializer,
@@ -23,7 +25,10 @@ from .serializers import (
     SuspectSerializer,
     InterrogationSerializer,
     NotificationSerializer,
+    SuspectSubmissionSerializer,
 )
+
+User = get_user_model()
 
 
 def require_action(user, action):
@@ -37,8 +42,17 @@ class DetectiveBoardViewSet(viewsets.ModelViewSet):
 
     def check_permissions(self, request):
         super().check_permissions(request)
-        if not require_action(request.user, 'investigation.board.manage'):
-            self.permission_denied(request, message='No permission')
+        if self.action == 'open_case_board':
+            ok = (
+                require_action(request.user, 'investigation.board.manage')
+                or require_action(request.user, 'suspect.manage')
+                or require_action(request.user, 'case.read_all')
+            )
+            if not ok:
+                self.permission_denied(request, message='No permission')
+        else:
+            if not require_action(request.user, 'investigation.board.manage'):
+                self.permission_denied(request, message='No permission')
 
     def _sync_board_nodes(self, board, case):
         existing_keys = set(
@@ -222,6 +236,104 @@ class NotificationViewSet(viewsets.ModelViewSet):
         notif.is_read = True
         notif.save(update_fields=['is_read'])
         return Response({'status': 'ok'})
+
+
+class SuspectSubmissionViewSet(viewsets.ModelViewSet):
+    queryset = SuspectSubmission.objects.select_related('case', 'detective', 'sergeant').prefetch_related('suspects').all()
+    serializer_class = SuspectSubmissionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = self.queryset
+        case_id = self.request.query_params.get('case_id')
+        if case_id:
+            qs = qs.filter(case_id=case_id)
+
+        user = self.request.user
+        if user.is_superuser or require_action(user, 'case.read_all'):
+            return qs
+        if require_action(user, 'suspect.manage'):
+            return qs.filter(Q(status=SuspectSubmission.Status.PENDING) | Q(sergeant=user)).distinct()
+        return qs.filter(detective=user)
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if self.action == 'submit_main_suspects':
+            ok = require_action(request.user, 'investigation.board.manage')
+        elif self.action == 'sergeant_review':
+            ok = require_action(request.user, 'suspect.manage')
+        else:
+            ok = request.user.is_authenticated
+        if not ok:
+            self.permission_denied(request, message='No permission')
+
+    @decorators.action(detail=False, methods=['post'])
+    def submit_main_suspects(self, request):
+        case_id = request.data.get('case_id')
+        suspect_ids = request.data.get('suspect_ids', [])
+        reason = (request.data.get('detective_reason') or '').strip()
+
+        if not case_id or not isinstance(suspect_ids, list) or len(suspect_ids) == 0 or not reason:
+            return Response({'detail': 'case_id, suspect_ids, detective_reason are required.'}, status=400)
+
+        case = Case.objects.filter(id=case_id).first()
+        if not case:
+            return Response({'detail': 'Case not found'}, status=404)
+        if not request.user.is_superuser and case.assigned_detective_id != request.user.id:
+            return Response({'detail': 'Only assigned detective can submit main suspects.'}, status=403)
+
+        suspects = Suspect.objects.filter(case=case, id__in=suspect_ids)
+        if suspects.count() != len(set(suspect_ids)):
+            return Response({'detail': 'Some suspects do not belong to this case.'}, status=400)
+
+        submission = SuspectSubmission.objects.create(
+            case=case,
+            detective=request.user,
+            detective_reason=reason,
+            status=SuspectSubmission.Status.PENDING,
+        )
+        submission.suspects.set(suspects)
+
+        sergeants = User.objects.filter(user_roles__role__permissions__action='suspect.manage').distinct()
+        for sg in sergeants:
+            Notification.objects.create(
+                recipient=sg,
+                case=case,
+                message=f'Detective submitted main suspects for case #{case.id}. Please review.',
+            )
+
+        return Response(SuspectSubmissionSerializer(submission).data, status=201)
+
+    @decorators.action(detail=True, methods=['post'])
+    def sergeant_review(self, request, pk=None):
+        submission = self.get_object()
+        if submission.status != SuspectSubmission.Status.PENDING:
+            return Response({'detail': 'Submission already reviewed.'}, status=400)
+
+        approved = bool(request.data.get('approved', False))
+        message = request.data.get('message', '')
+
+        submission.status = SuspectSubmission.Status.APPROVED if approved else SuspectSubmission.Status.REJECTED
+        submission.sergeant = request.user
+        submission.sergeant_message = message
+        submission.reviewed_at = timezone.now()
+        submission.save(update_fields=['status', 'sergeant', 'sergeant_message', 'reviewed_at'])
+
+        if approved:
+            submission.suspects.update(status=Suspect.Status.ARRESTED)
+            Notification.objects.create(
+                recipient=submission.detective,
+                case=submission.case,
+                message=f'Sergeant approved suspect submission for case #{submission.case.id}. Arrest process started.',
+            )
+        else:
+            Notification.objects.create(
+                recipient=submission.detective,
+                case=submission.case,
+                message=f'Sergeant rejected suspect submission for case #{submission.case.id}: {message}',
+            )
+
+        return Response(SuspectSubmissionSerializer(submission).data)
 
 
 @decorators.api_view(['GET'])

@@ -73,3 +73,25 @@ class Notification(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class SuspectSubmission(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        APPROVED = 'approved', 'Approved'
+        REJECTED = 'rejected', 'Rejected'
+
+    case = models.ForeignKey('cases.Case', on_delete=models.CASCADE, related_name='suspect_submissions')
+    detective = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='detective_submissions')
+    suspects = models.ManyToManyField(Suspect, related_name='submissions')
+    detective_reason = models.TextField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    sergeant = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='sergeant_reviews'
+    )
+    sergeant_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']

@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from cases.models import Case
+from rbac.permissions import user_has_action
 
 User = get_user_model()
 
@@ -15,14 +16,16 @@ def _modules_for_user(user):
         {'key': 'evidence', 'title': 'Evidence Registry', 'path': '/evidence'},
     ]
 
-    if user.is_superuser or 'detective' in role_names:
+    if user.is_superuser or user_has_action(user, 'investigation.board.manage'):
         modules.append({'key': 'detective_board', 'title': 'Detective Board', 'path': '/board'})
+    if user.is_superuser or user_has_action(user, 'suspect.manage'):
+        modules.append({'key': 'sergeant_review', 'title': 'Suspect Reviews', 'path': '/board'})
 
-    if user.is_superuser or role_names.intersection({'captain', 'chief', 'judge'}):
+    if user.is_superuser or role_names.intersection({'captain', 'chief', 'judge'}) or user_has_action(user, 'case.send_to_court'):
         modules.append({'key': 'reports', 'title': 'Global Reports', 'path': '/reports'})
         modules.append({'key': 'judiciary', 'title': 'Judiciary', 'path': '/judiciary'})
 
-    if user.is_superuser or role_names.intersection({'police officer', 'detective'}):
+    if user.is_superuser or role_names.intersection({'police officer', 'detective'}) or user_has_action(user, 'tip.detective_review'):
         modules.append({'key': 'rewards', 'title': 'Rewards & Tips', 'path': '/rewards'})
 
     if user.is_superuser:

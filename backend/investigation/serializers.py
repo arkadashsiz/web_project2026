@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import DetectiveBoard, BoardNode, BoardEdge, Suspect, Interrogation, Notification
+from .models import DetectiveBoard, BoardNode, BoardEdge, Suspect, Interrogation, Notification, SuspectSubmission
 
 
 class BoardNodeSerializer(serializers.ModelSerializer):
@@ -44,3 +44,20 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = '__all__'
+
+
+class SuspectSubmissionSerializer(serializers.ModelSerializer):
+    suspect_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+    suspect_brief = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = SuspectSubmission
+        fields = (
+            'id', 'case', 'detective', 'suspects', 'suspect_ids',
+            'suspect_brief', 'detective_reason', 'status',
+            'sergeant', 'sergeant_message', 'created_at', 'reviewed_at',
+        )
+        read_only_fields = ('detective', 'suspects', 'status', 'sergeant', 'created_at', 'reviewed_at')
+
+    def get_suspect_brief(self, obj):
+        return [{'id': s.id, 'full_name': s.full_name, 'status': s.status} for s in obj.suspects.all()]

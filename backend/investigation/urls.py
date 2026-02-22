@@ -7,6 +7,7 @@ from .views import (
     SuspectViewSet,
     InterrogationViewSet,
     NotificationViewSet,
+    SuspectSubmissionViewSet,
     high_alert_list,
 )
 
@@ -15,6 +16,7 @@ router.register('boards', DetectiveBoardViewSet, basename='boards')
 router.register('board-nodes', BoardNodeViewSet, basename='board-nodes')
 router.register('board-edges', BoardEdgeViewSet, basename='board-edges')
 router.register('suspects', SuspectViewSet, basename='suspects')
+router.register('suspect-submissions', SuspectSubmissionViewSet, basename='suspect-submissions')
 router.register('interrogations', InterrogationViewSet, basename='interrogations')
 router.register('notifications', NotificationViewSet, basename='notifications')
 
