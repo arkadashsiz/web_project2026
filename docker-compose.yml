@@ -1,21 +1,50 @@
+version: '3.8'
+
 services:
+  db:
+    image: postgres:15-alpine
+    container_name: police_db
+    environment:
+      POSTGRES_DB: police_db
+      POSTGRES_USER: police_user
+      POSTGRES_PASSWORD: police_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U police_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./backend
     container_name: police_backend
-    command: sh -c "python manage.py migrate && python manage.py seed_roles && python manage.py runserver 0.0.0.0:8000"
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
     volumes:
-      - ./backend:/app
+      - ./backend:/app          # Mount for live code reload
     ports:
       - "8000:8000"
+    environment:
+      DATABASE_URL: postgres://police_user:police_password@db:5432/police_db
+      DEBUG: "True"
+    depends_on:
+      db:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
 
   frontend:
     build: ./frontend
     container_name: police_frontend
-    command: sh -c "npm install && npm run dev -- --host"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
     ports:
-      - "5173:5173"
+      - "80:80"                 # Expose on host port 80
     depends_on:
       - backend
+    # For development with hot reload, use a different setup (see alternative below)
+
+volumes:
+  postgres_data:
