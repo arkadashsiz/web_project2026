@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 
 from cases.models import Case, CaseComplainant, ComplaintSubmission
+from evidence.models import OtherEvidence
 from rbac.models import Role, RolePermission, UserRole
 
 User = get_user_model()
@@ -362,3 +363,48 @@ class CasesFlowTest(APITestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['title'], 'Complaint fixed')
+
+    def test_global_report_requires_permission(self):
+        case = Case.objects.create(
+            title='Report target',
+            description='desc',
+            source=Case.Source.SCENE,
+            status=Case.Status.OPEN,
+            severity=Case.Severity.LEVEL_2,
+            created_by=self.user,
+        )
+        resp = self.client.get(f'/api/cases/cases/{case.id}/global_report/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_global_report_contains_required_sections(self):
+        reader = User.objects.create_user(
+            username='report_reader',
+            password='VeryStrong123',
+            email='reader@example.com',
+            phone='09130000200',
+            national_id='3200',
+        )
+        role = Role.objects.create(name='report_reader_role')
+        RolePermission.objects.create(role=role, action='case.read_all')
+        UserRole.objects.create(user=reader, role=role)
+
+        case = Case.objects.create(
+            title='Report full',
+            description='desc',
+            source=Case.Source.COMPLAINT,
+            status=Case.Status.OPEN,
+            severity=Case.Severity.LEVEL_1,
+            created_by=self.user,
+        )
+        CaseComplainant.objects.create(case=case, user=self.user, status=CaseComplainant.Status.APPROVED)
+        OtherEvidence.objects.create(case=case, title='Obj', description='d', recorded_by=self.user)
+
+        self.client.force_authenticate(reader)
+        resp = self.client.get(f'/api/cases/cases/{case.id}/global_report/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('formed_at', resp.data)
+        self.assertIn('complainants', resp.data)
+        self.assertIn('evidence', resp.data)
+        self.assertIn('suspects', resp.data)
+        self.assertIn('criminals', resp.data)
+        self.assertIn('involved_members', resp.data)

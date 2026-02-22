@@ -40,6 +40,7 @@ export default function CasesPage() {
   const [sceneMsgType, setSceneMsgType] = useState('success')
   const [sceneDesk, setSceneDesk] = useState({ caseId: '', addComplainantUserId: '', denyNote: '' })
   const [selectedSceneReport, setSelectedSceneReport] = useState(null)
+  const [editRow, setEditRow] = useState({ id: '', title: '', description: '', severity: 1 })
 
   const complaintQueue = useMemo(
     () =>
@@ -210,6 +211,47 @@ export default function CasesPage() {
   const denyScene = () => callScene(() =>
     api.post(`/cases/cases/${sceneDesk.caseId}/deny_scene/`, { note: sceneDesk.denyNote })
   )
+
+  const startEdit = (c) => {
+    setEditRow({
+      id: String(c.id),
+      title: c.title || '',
+      description: c.description || '',
+      severity: Number(c.severity || 1),
+    })
+  }
+
+  const saveEdit = async () => {
+    if (!editRow.id) return
+    setWorkflowMsg('')
+    try {
+      await api.patch(`/cases/cases/${editRow.id}/`, {
+        title: editRow.title,
+        description: editRow.description,
+        severity: Number(editRow.severity),
+      })
+      setWorkflowMsgType('success')
+      setWorkflowMsg(`Case #${editRow.id} updated.`)
+      setEditRow({ id: '', title: '', description: '', severity: 1 })
+      load()
+    } catch (err) {
+      setWorkflowMsgType('error')
+      setWorkflowMsg(err?.response?.data?.detail || 'Update not allowed for this record.')
+    }
+  }
+
+  const removeCase = async (caseId) => {
+    setWorkflowMsg('')
+    try {
+      await api.delete(`/cases/cases/${caseId}/`)
+      setWorkflowMsgType('success')
+      setWorkflowMsg(`Case #${caseId} deleted.`)
+      load()
+    } catch (err) {
+      setWorkflowMsgType('error')
+      setWorkflowMsg(err?.response?.data?.detail || 'Delete not allowed for this record.')
+    }
+  }
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
@@ -457,6 +499,45 @@ export default function CasesPage() {
           </div>
         </>
       )}
+
+      <div className="panel">
+        <h3>Accessible Case & Complaint Records</h3>
+        <p style={{ margin: 0, color: '#546176' }}>
+          You can view records you have access to and edit/delete if backend permissions allow.
+        </p>
+        <ul className="list">
+          {cases.map((c) => (
+            <li key={c.id}>
+              <div>
+                <strong>#{c.id}</strong> {c.title} | source: {c.source} | status: {c.status} | severity: {c.severity}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                <button type="button" onClick={() => startEdit(c)}>Edit</button>
+                <button type="button" onClick={() => removeCase(c.id)}>Delete</button>
+              </div>
+            </li>
+          ))}
+          {cases.length === 0 && <li>No accessible records.</li>}
+        </ul>
+
+        {editRow.id && (
+          <div style={{ border: '1px solid #d8deea', borderRadius: 8, padding: 10, marginTop: 8, display: 'grid', gap: 8 }}>
+            <h4>Edit Record #{editRow.id}</h4>
+            <input value={editRow.title} onChange={(e) => setEditRow({ ...editRow, title: e.target.value })} />
+            <textarea value={editRow.description} onChange={(e) => setEditRow({ ...editRow, description: e.target.value })} />
+            <select value={editRow.severity} onChange={(e) => setEditRow({ ...editRow, severity: Number(e.target.value) })}>
+              <option value={1}>Level 3</option>
+              <option value={2}>Level 2</option>
+              <option value={3}>Level 1</option>
+              <option value={4}>Critical</option>
+            </select>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={saveEdit}>Save</button>
+              <button type="button" onClick={() => setEditRow({ id: '', title: '', description: '', severity: 1 })}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

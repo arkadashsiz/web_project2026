@@ -10,6 +10,7 @@ from .serializers import (
     ComplaintSubmissionSerializer,
     CaseComplainantSerializer,
     CaseWitnessSerializer,
+    CaseLogSerializer,
 )
 
 User = get_user_model()
@@ -377,6 +378,96 @@ class CaseViewSet(viewsets.ModelViewSet):
         case.save(update_fields=['assigned_detective', 'status', 'updated_at'])
         log_case(case, request.user, 'case.detective.taken')
         return Response(self.get_serializer(case).data)
+
+    @decorators.action(detail=True, methods=['get'])
+    def global_report(self, request, pk=None):
+        case = self.get_object()
+        if not has_any_action(request.user, ['case.read_all', 'judiciary.verdict', 'case.send_to_court']):
+            return Response({'detail': 'No permission'}, status=403)
+
+        from evidence.models import WitnessEvidence, BiologicalEvidence, VehicleEvidence, IdentificationEvidence, OtherEvidence
+        from evidence.serializers import (
+            WitnessEvidenceSerializer,
+            BiologicalEvidenceSerializer,
+            VehicleEvidenceSerializer,
+            IdentificationEvidenceSerializer,
+            OtherEvidenceSerializer,
+        )
+        from investigation.models import Suspect, Interrogation, SuspectSubmission
+        from investigation.serializers import SuspectSerializer, InterrogationSerializer, SuspectSubmissionSerializer
+        from judiciary.models import CourtSession
+        from judiciary.serializers import CourtSessionSerializer
+
+        def user_row(u):
+            if not u:
+                return None
+            return {
+                'id': u.id,
+                'username': u.username,
+                'first_name': u.first_name,
+                'last_name': u.last_name,
+                'national_id': u.national_id,
+                'phone': u.phone,
+                'email': u.email,
+                'roles': list(u.user_roles.values_list('role__name', flat=True)),
+            }
+
+        suspects = Suspect.objects.filter(case=case)
+        interrogations = Interrogation.objects.filter(case=case).select_related(
+            'detective', 'sergeant', 'captain_by', 'chief_by', 'suspect'
+        )
+        submissions = SuspectSubmission.objects.filter(case=case).select_related('detective', 'sergeant').prefetch_related('suspects')
+        court_sessions = CourtSession.objects.filter(case=case).select_related('judge', 'convicted_suspect').order_by('-id')
+        complainants = case.complainants.select_related('user').all()
+
+        involved_users = {}
+        for u in [case.created_by, case.assigned_detective]:
+            if u:
+                involved_users[u.id] = u
+        for log in case.logs.select_related('actor').all():
+            involved_users[log.actor_id] = log.actor
+        for row in complainants:
+            involved_users[row.user_id] = row.user
+        for i in interrogations:
+            for u in [i.detective, i.sergeant, i.captain_by, i.chief_by]:
+                if u:
+                    involved_users[u.id] = u
+        for s in submissions:
+            for u in [s.detective, s.sergeant]:
+                if u:
+                    involved_users[u.id] = u
+        for cs in court_sessions:
+            involved_users[cs.judge_id] = cs.judge
+
+        payload = {
+            'case': CaseSerializer(case).data,
+            'formed_at': case.created_at,
+            'complainants': [
+                {
+                    'id': row.id,
+                    'status': row.status,
+                    'review_note': row.review_note,
+                    'user': user_row(row.user),
+                }
+                for row in complainants
+            ],
+            'witness_statements': CaseWitnessSerializer(case.witnesses.all(), many=True).data,
+            'evidence': {
+                'witness': WitnessEvidenceSerializer(WitnessEvidence.objects.filter(case=case), many=True).data,
+                'biological': BiologicalEvidenceSerializer(BiologicalEvidence.objects.filter(case=case), many=True).data,
+                'vehicle': VehicleEvidenceSerializer(VehicleEvidence.objects.filter(case=case), many=True).data,
+                'identification': IdentificationEvidenceSerializer(IdentificationEvidence.objects.filter(case=case), many=True).data,
+                'other': OtherEvidenceSerializer(OtherEvidence.objects.filter(case=case), many=True).data,
+            },
+            'suspects': SuspectSerializer(suspects, many=True).data,
+            'criminals': SuspectSerializer(suspects.filter(status=Suspect.Status.CRIMINAL), many=True).data,
+            'interrogations': InterrogationSerializer(interrogations, many=True).data,
+            'suspect_submissions': SuspectSubmissionSerializer(submissions, many=True).data,
+            'court_sessions': CourtSessionSerializer(court_sessions, many=True).data,
+            'logs': CaseLogSerializer(case.logs.all(), many=True).data,
+            'involved_members': [user_row(u) for u in involved_users.values()],
+        }
+        return Response(payload)
 
 
 class ComplaintSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
