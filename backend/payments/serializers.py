@@ -6,4 +6,4 @@ class BailPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = BailPayment
         fields = '__all__'
-        read_only_fields = ('created_by',)
+        read_only_fields = ('created_by', 'authority', 'gateway_status', 'payment_ref', 'status', 'created_at')

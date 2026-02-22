@@ -6,5 +6,5 @@ router = DefaultRouter()
 router.register('bail', BailPaymentViewSet, basename='bail')
 
 urlpatterns = router.urls + [
-    path('return/', payment_return_page),
+    path('return/', payment_return_page, name='payment-return-page'),
 ]

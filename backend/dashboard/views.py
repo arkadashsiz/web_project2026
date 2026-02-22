@@ -30,6 +30,9 @@ def _modules_for_user(user):
     if user.is_superuser or role_names.intersection({'police officer', 'detective'}) or user_has_action(user, 'tip.detective_review') or user_has_action(user, 'tip.submit'):
         modules.append({'key': 'rewards', 'title': 'Rewards & Tips', 'path': '/rewards'})
 
+    if user.is_superuser or user_has_action(user, 'suspect.manage') or role_names.intersection({'suspect', 'criminal'}):
+        modules.append({'key': 'payments', 'title': 'Payments', 'path': '/payments'})
+
     if user.is_superuser:
         modules.append({'key': 'rbac_admin', 'title': 'RBAC Admin', 'path': '/admin-rbac'})
 
