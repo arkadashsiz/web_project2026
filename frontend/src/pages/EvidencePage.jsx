@@ -6,11 +6,14 @@ export default function EvidencePage() {
   const { user } = useAuth()
   const roles = (user?.roles || []).map((r) => r.toLowerCase())
   const isForensic = user?.is_superuser || roles.includes('coroner') || roles.includes('forensic')
+  const canRegisterEvidence = user?.is_superuser || roles.some((r) => ['police officer', 'patrol officer', 'coroner', 'forensic'].includes(r))
 
   const [mode, setMode] = useState('witness')
   const [message, setMessage] = useState('')
   const [bioList, setBioList] = useState([])
   const [evidenceList, setEvidenceList] = useState([])
+  const [cases, setCases] = useState([])
+  const selectableCases = cases.filter((c) => ['open', 'investigating', 'sent_to_court'].includes(c.status))
 
   const [witness, setWitness] = useState({
     case: '', title: '', description: '', transcript: '', media_items: '[{"type":"image","url":""}]', media_url: '',
@@ -22,8 +25,9 @@ export default function EvidencePage() {
     case: '', title: '', description: '', model_name: '', color: '', plate_number: '', serial_number: '',
   })
   const [identification, setIdentification] = useState({
-    case: '', title: '', description: '', owner_full_name: '', metadata: '{"id_number":""}',
+    case: '', title: '', description: '', owner_full_name: '',
   })
+  const [idMetaRows, setIdMetaRows] = useState([{ key: '', value: '' }])
   const [other, setOther] = useState({ case: '', title: '', description: '' })
   const [bioResult, setBioResult] = useState({
     evidence_id: '',
@@ -68,11 +72,18 @@ export default function EvidencePage() {
         await loadEvidenceByMode('vehicle')
       }
       if (mode === 'identification') {
+        const metadata = {}
+        for (const row of idMetaRows) {
+          const k = (row.key || '').trim()
+          if (!k) continue
+          metadata[k] = row.value ?? ''
+        }
         await api.post('/evidence/identification/', {
           ...identification,
           case: Number(identification.case),
-          metadata: parseJson(identification.metadata, {}),
+          metadata,
         })
+        setIdMetaRows([{ key: '', value: '' }])
         await loadEvidenceByMode('identification')
       }
       if (mode === 'other') {
@@ -138,12 +149,37 @@ export default function EvidencePage() {
     }
   }
 
+  const loadCases = async () => {
+    try {
+      const res = await api.get('/cases/cases/')
+      setCases(res.data.results || [])
+    } catch {
+      setCases([])
+    }
+  }
+
   useEffect(() => {
     loadEvidenceByMode(mode)
+    loadCases()
     if (mode === 'biological') {
       loadBiological()
     }
   }, [mode])
+
+  const updateIdMetaRow = (idx, field, value) => {
+    setIdMetaRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [field]: value } : r)))
+  }
+
+  const addIdMetaRow = () => {
+    setIdMetaRows((prev) => [...prev, { key: '', value: '' }])
+  }
+
+  const removeIdMetaRow = (idx) => {
+    setIdMetaRows((prev) => {
+      if (prev.length === 1) return [{ key: '', value: '' }]
+      return prev.filter((_, i) => i !== idx)
+    })
+  }
 
   return (
     <div className="panel">
@@ -157,9 +193,24 @@ export default function EvidencePage() {
       </div>
 
       <form onSubmit={submit} style={{ display: 'grid', gap: 10 }}>
+        {selectableCases.length === 0 && (
+          <p className="error">
+            No selectable cases found. You need an active accessible case (open/investigating/sent_to_court).
+          </p>
+        )}
+        {!canRegisterEvidence && (
+          <p className="error">
+            No permission to register evidence. Use a police officer, patrol officer, coroner, or superuser account.
+          </p>
+        )}
         {mode === 'witness' && (
           <>
-            <input placeholder="Case ID" value={witness.case} onChange={(e) => setWitness({ ...witness, case: e.target.value })} />
+            <select value={witness.case} onChange={(e) => setWitness({ ...witness, case: e.target.value })}>
+              <option value="">Select case</option>
+              {selectableCases.map((c) => (
+                <option key={c.id} value={c.id}>#{c.id} {c.title} ({c.status})</option>
+              ))}
+            </select>
             <input placeholder="Title" value={witness.title} onChange={(e) => setWitness({ ...witness, title: e.target.value })} />
             <textarea placeholder="Description" value={witness.description} onChange={(e) => setWitness({ ...witness, description: e.target.value })} />
             <textarea placeholder="Transcript" value={witness.transcript} onChange={(e) => setWitness({ ...witness, transcript: e.target.value })} />
@@ -170,7 +221,12 @@ export default function EvidencePage() {
 
         {mode === 'biological' && (
           <>
-            <input placeholder="Case ID" value={biological.case} onChange={(e) => setBiological({ ...biological, case: e.target.value })} />
+            <select value={biological.case} onChange={(e) => setBiological({ ...biological, case: e.target.value })}>
+              <option value="">Select case</option>
+              {selectableCases.map((c) => (
+                <option key={c.id} value={c.id}>#{c.id} {c.title} ({c.status})</option>
+              ))}
+            </select>
             <input placeholder="Title" value={biological.title} onChange={(e) => setBiological({ ...biological, title: e.target.value })} />
             <textarea placeholder="Description" value={biological.description} onChange={(e) => setBiological({ ...biological, description: e.target.value })} />
             <textarea placeholder='image_urls JSON (required, e.g. ["https://..."])' value={biological.image_urls} onChange={(e) => setBiological({ ...biological, image_urls: e.target.value })} />
@@ -179,7 +235,12 @@ export default function EvidencePage() {
 
         {mode === 'vehicle' && (
           <>
-            <input placeholder="Case ID" value={vehicle.case} onChange={(e) => setVehicle({ ...vehicle, case: e.target.value })} />
+            <select value={vehicle.case} onChange={(e) => setVehicle({ ...vehicle, case: e.target.value })}>
+              <option value="">Select case</option>
+              {selectableCases.map((c) => (
+                <option key={c.id} value={c.id}>#{c.id} {c.title} ({c.status})</option>
+              ))}
+            </select>
             <input placeholder="Title" value={vehicle.title} onChange={(e) => setVehicle({ ...vehicle, title: e.target.value })} />
             <textarea placeholder="Description" value={vehicle.description} onChange={(e) => setVehicle({ ...vehicle, description: e.target.value })} />
             <input placeholder="Model" value={vehicle.model_name} onChange={(e) => setVehicle({ ...vehicle, model_name: e.target.value })} />
@@ -191,23 +252,51 @@ export default function EvidencePage() {
 
         {mode === 'identification' && (
           <>
-            <input placeholder="Case ID" value={identification.case} onChange={(e) => setIdentification({ ...identification, case: e.target.value })} />
+            <select value={identification.case} onChange={(e) => setIdentification({ ...identification, case: e.target.value })}>
+              <option value="">Select case</option>
+              {selectableCases.map((c) => (
+                <option key={c.id} value={c.id}>#{c.id} {c.title} ({c.status})</option>
+              ))}
+            </select>
             <input placeholder="Title" value={identification.title} onChange={(e) => setIdentification({ ...identification, title: e.target.value })} />
             <textarea placeholder="Description" value={identification.description} onChange={(e) => setIdentification({ ...identification, description: e.target.value })} />
             <input placeholder="Owner full name" value={identification.owner_full_name} onChange={(e) => setIdentification({ ...identification, owner_full_name: e.target.value })} />
-            <textarea placeholder='metadata JSON (key-value, can be {})' value={identification.metadata} onChange={(e) => setIdentification({ ...identification, metadata: e.target.value })} />
+            <div style={{ border: '1px solid #d8deea', borderRadius: 8, padding: 8, display: 'grid', gap: 8 }}>
+              <strong>Additional ID Info (Key-Value, Optional)</strong>
+              {idMetaRows.map((row, idx) => (
+                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8 }}>
+                  <input
+                    placeholder="Key (e.g. id_number)"
+                    value={row.key}
+                    onChange={(e) => updateIdMetaRow(idx, 'key', e.target.value)}
+                  />
+                  <input
+                    placeholder="Value"
+                    value={row.value}
+                    onChange={(e) => updateIdMetaRow(idx, 'value', e.target.value)}
+                  />
+                  <button type="button" onClick={() => removeIdMetaRow(idx)}>Remove</button>
+                </div>
+              ))}
+              <button type="button" onClick={addIdMetaRow}>Add Key-Value</button>
+            </div>
           </>
         )}
 
         {mode === 'other' && (
           <>
-            <input placeholder="Case ID" value={other.case} onChange={(e) => setOther({ ...other, case: e.target.value })} />
+            <select value={other.case} onChange={(e) => setOther({ ...other, case: e.target.value })}>
+              <option value="">Select case</option>
+              {selectableCases.map((c) => (
+                <option key={c.id} value={c.id}>#{c.id} {c.title} ({c.status})</option>
+              ))}
+            </select>
             <input placeholder="Title" value={other.title} onChange={(e) => setOther({ ...other, title: e.target.value })} />
             <textarea placeholder="Description" value={other.description} onChange={(e) => setOther({ ...other, description: e.target.value })} />
           </>
         )}
 
-        <button type="submit">Save Evidence</button>
+        <button type="submit" disabled={!canRegisterEvidence || selectableCases.length === 0}>Save Evidence</button>
       </form>
 
       {mode === 'biological' && (
@@ -249,11 +338,17 @@ export default function EvidencePage() {
       {mode === 'biological' && isForensic && (
         <form onSubmit={updateBioResults} style={{ display: 'grid', gap: 10, marginTop: 12 }}>
           <h4>Update Biological Results Later (Forensic / Coroner)</h4>
-          <input
-            placeholder="Biological Evidence ID"
+          <select
             value={bioResult.evidence_id}
             onChange={(e) => setBioResult({ ...bioResult, evidence_id: e.target.value })}
-          />
+          >
+            <option value="">Select biological evidence</option>
+            {bioList.map((b) => (
+              <option key={b.id} value={b.id}>
+                #{b.id} | Case {b.case} | {b.title}
+              </option>
+            ))}
+          </select>
           <textarea
             placeholder="Forensic result"
             value={bioResult.forensic_result}
