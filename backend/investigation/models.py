@@ -77,6 +77,8 @@ class Interrogation(models.Model):
     sergeant_note = models.TextField(blank=True)
     detective_score = models.PositiveSmallIntegerField(default=1)
     sergeant_score = models.PositiveSmallIntegerField(default=1)
+    detective_submitted = models.BooleanField(default=False)
+    sergeant_submitted = models.BooleanField(default=False)
     captain_score = models.PositiveSmallIntegerField(null=True, blank=True)
     captain_note = models.TextField(blank=True)
     captain_decision = models.CharField(max_length=20, choices=CaptainDecision.choices, default=CaptainDecision.PENDING)

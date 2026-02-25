@@ -241,6 +241,28 @@ class SuspectViewSet(viewsets.ModelViewSet):
             self.permission_denied(self.request, message='Only assigned detective can delete suspects')
         instance.delete()
 
+    @decorators.action(detail=False, methods=['get'])
+    def selectable_users(self, request):
+        q = (request.query_params.get('q') or '').strip()
+        qs = User.objects.all().order_by('id')
+        if q:
+            qs = qs.filter(
+                Q(username__icontains=q)
+                | Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+                | Q(national_id__icontains=q)
+            )
+        rows = []
+        for u in qs[:200]:
+            full_name = f'{u.first_name} {u.last_name}'.strip() or u.username
+            rows.append({
+                'id': u.id,
+                'username': u.username,
+                'full_name': full_name,
+                'national_id': u.national_id,
+            })
+        return Response(rows)
+
     @decorators.action(detail=True, methods=['post'])
     def arrest(self, request, pk=None):
         suspect = self.get_object()
@@ -349,6 +371,8 @@ class InterrogationViewSet(viewsets.ModelViewSet):
         suspect = Suspect.objects.filter(id=suspect_id, case_id=case_id).first()
         if not case or not suspect:
             return Response({'detail': 'Case/suspect combination not found.'}, status=404)
+        if case.status in [Case.Status.SENT_TO_COURT, Case.Status.CLOSED]:
+            return Response({'detail': 'Interrogation assessment is locked after case is sent to court/closed.'}, status=400)
         if suspect.status != Suspect.Status.ARRESTED:
             return Response({'detail': 'Interrogation is allowed only for arrested suspects.'}, status=400)
 
@@ -364,6 +388,23 @@ class InterrogationViewSet(viewsets.ModelViewSet):
                     if case.severity == Case.Severity.CRITICAL
                     else Interrogation.ChiefDecision.NOT_REQUIRED
                 ),
+            )
+
+        waiting_captain_decision = (
+            interrogation.detective_submitted
+            and interrogation.sergeant_submitted
+            and interrogation.captain_decision == Interrogation.CaptainDecision.PENDING
+        )
+        waiting_chief_decision = (
+            case.severity == Case.Severity.CRITICAL
+            and interrogation.captain_decision == Interrogation.CaptainDecision.SUBMITTED
+            and interrogation.captain_outcome == Interrogation.CaptainOutcome.APPROVED
+            and interrogation.chief_decision == Interrogation.ChiefDecision.PENDING
+        )
+        if waiting_captain_decision or waiting_chief_decision:
+            return Response(
+                {'detail': 'Assessment is locked while pending captain/chief decision.'},
+                status=400
             )
 
         changed_fields = []
@@ -400,6 +441,8 @@ class InterrogationViewSet(viewsets.ModelViewSet):
             if 'detective_note' in request.data:
                 interrogation.detective_note = request.data.get('detective_note', '') or ''
                 changed_fields.append('detective_note')
+            interrogation.detective_submitted = True
+            changed_fields.append('detective_submitted')
             if interrogation.detective_id != request.user.id and request.user == case.assigned_detective:
                 interrogation.detective = request.user
                 changed_fields.append('detective')
@@ -429,17 +472,38 @@ class InterrogationViewSet(viewsets.ModelViewSet):
             if 'sergeant_note' in request.data:
                 interrogation.sergeant_note = request.data.get('sergeant_note', '') or ''
                 changed_fields.append('sergeant_note')
+            interrogation.sergeant_submitted = True
+            changed_fields.append('sergeant_submitted')
             if interrogation.sergeant_id != request.user.id:
                 interrogation.sergeant = request.user
                 changed_fields.append('sergeant')
 
         if changed_fields:
+            # If captain had previously rejected, any new reassessment starts a fresh captain cycle.
+            if interrogation.captain_outcome == Interrogation.CaptainOutcome.REJECTED and (
+                wants_detective_update or wants_sergeant_update
+            ):
+                interrogation.captain_decision = Interrogation.CaptainDecision.PENDING
+                interrogation.captain_outcome = Interrogation.CaptainOutcome.PENDING
+                interrogation.captain_score = None
+                interrogation.captain_note = ''
+                interrogation.captain_by = None
+                interrogation.captain_decided_at = None
+                interrogation.chief_decision = (
+                    Interrogation.ChiefDecision.PENDING
+                    if case.severity == Case.Severity.CRITICAL
+                    else Interrogation.ChiefDecision.NOT_REQUIRED
+                )
+                changed_fields.extend([
+                    'captain_decision', 'captain_outcome', 'captain_score', 'captain_note',
+                    'captain_by', 'captain_decided_at', 'chief_decision',
+                ])
             interrogation.save(update_fields=list(set(changed_fields)))
 
         # Notify captains after both detective/sergeant scores are available.
         if (
-            interrogation.detective_score is not None
-            and interrogation.sergeant_score is not None
+            interrogation.detective_submitted
+            and interrogation.sergeant_submitted
             and interrogation.captain_decision == Interrogation.CaptainDecision.PENDING
         ):
             captains = User.objects.filter(user_roles__role__permissions__action='interrogation.captain_decision').distinct()
@@ -455,21 +519,17 @@ class InterrogationViewSet(viewsets.ModelViewSet):
     @decorators.action(detail=True, methods=['post'])
     def captain_decision(self, request, pk=None):
         obj = self.get_object()
+        if not (obj.detective_submitted and obj.sergeant_submitted):
+            return Response({'detail': 'Both detective and sergeant must submit scores before captain decision.'}, status=400)
         approved_raw = request.data.get('approved', None)
         if approved_raw is None:
             return Response({'detail': 'approved is required (true/false)'}, status=400)
         approved = parse_bool(approved_raw, default=False)
-        score = request.data.get('captain_score')
         note = (request.data.get('captain_note') or '').strip()
-        if score is None:
-            return Response({'detail': 'captain_score is required'}, status=400)
-        score = int(score)
-        if score < 1 or score > 10:
-            return Response({'detail': 'captain_score must be between 1 and 10'}, status=400)
         if not note:
             return Response({'detail': 'captain_note is required'}, status=400)
 
-        obj.captain_score = score
+        obj.captain_score = None
         obj.captain_note = note
         obj.captain_decision = Interrogation.CaptainDecision.SUBMITTED
         obj.captain_outcome = Interrogation.CaptainOutcome.APPROVED if approved else Interrogation.CaptainOutcome.REJECTED
@@ -478,6 +538,8 @@ class InterrogationViewSet(viewsets.ModelViewSet):
 
         if not approved:
             obj.chief_decision = Interrogation.ChiefDecision.NOT_REQUIRED
+            obj.detective_submitted = False
+            obj.sergeant_submitted = False
             obj.case.status = Case.Status.INVESTIGATING
             obj.case.save(update_fields=['status', 'updated_at'])
             for recipient in [obj.detective, obj.sergeant]:
@@ -508,13 +570,14 @@ class InterrogationViewSet(viewsets.ModelViewSet):
 
         obj.save(update_fields=[
             'captain_score', 'captain_note', 'captain_decision', 'captain_outcome', 'captain_by',
-            'captain_decided_at', 'chief_decision',
+            'captain_decided_at', 'chief_decision', 'detective_submitted', 'sergeant_submitted',
         ])
         return Response(self.get_serializer(obj).data)
 
     @decorators.action(detail=True, methods=['post'])
     def chief_review(self, request, pk=None):
         obj = self.get_object()
+        previous_captain = obj.captain_by
         if obj.case.severity != Case.Severity.CRITICAL:
             return Response({'detail': 'Chief review is only for critical cases.'}, status=400)
         if obj.captain_decision != Interrogation.CaptainDecision.SUBMITTED:
@@ -533,15 +596,29 @@ class InterrogationViewSet(viewsets.ModelViewSet):
         obj.chief_reviewed = True
         obj.chief_by = request.user
         obj.chief_decided_at = timezone.now()
-        obj.save(update_fields=['chief_decision', 'chief_note', 'chief_reviewed', 'chief_by', 'chief_decided_at'])
+        update_fields = ['chief_decision', 'chief_note', 'chief_reviewed', 'chief_by', 'chief_decided_at']
 
         if approved:
             obj.case.status = Case.Status.SENT_TO_COURT
             obj.case.save(update_fields=['status', 'updated_at'])
+        else:
+            # Chief rejection returns the flow to captain decision.
+            obj.captain_decision = Interrogation.CaptainDecision.PENDING
+            obj.captain_outcome = Interrogation.CaptainOutcome.PENDING
+            obj.captain_score = None
+            obj.captain_note = ''
+            obj.captain_by = None
+            obj.captain_decided_at = None
+            update_fields.extend([
+                'captain_decision', 'captain_outcome', 'captain_score',
+                'captain_note', 'captain_by', 'captain_decided_at',
+            ])
 
-        if obj.captain_by:
+        obj.save(update_fields=update_fields)
+
+        if previous_captain:
             Notification.objects.create(
-                recipient=obj.captain_by,
+                recipient=previous_captain,
                 case=obj.case,
                 message=f'Chief {"approved" if approved else "rejected"} captain decision for interrogation #{obj.id}.',
             )
@@ -612,6 +689,8 @@ class SuspectSubmissionViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Case not found'}, status=404)
         if not request.user.is_superuser and case.assigned_detective_id != request.user.id:
             return Response({'detail': 'Only assigned detective can submit main suspects.'}, status=403)
+        if SuspectSubmission.objects.filter(case=case, status=SuspectSubmission.Status.PENDING).exists():
+            return Response({'detail': 'A suspect submission for this case is already pending sergeant review.'}, status=400)
 
         suspects = Suspect.objects.filter(case=case, id__in=suspect_ids)
         if suspects.count() != len(set(suspect_ids)):
