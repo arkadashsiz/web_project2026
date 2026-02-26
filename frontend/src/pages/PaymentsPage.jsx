@@ -55,14 +55,13 @@ export default function PaymentsPage() {
   const load = async () => {
     const reqs = [api.get('/payments/bail/')]
     if (isSergeant) {
-      reqs.push(api.get('/cases/cases/'))
-      reqs.push(api.get('/investigation/suspects/'))
+      reqs.push(api.get('/payments/bail/create_options/'))
     }
-    const [r1, r2, r3] = await Promise.all(reqs)
+    const [r1, r2] = await Promise.all(reqs)
     setRows(r1.data.results || [])
     if (isSergeant) {
-      setCases(r2?.data?.results || [])
-      setSuspects(r3?.data?.results || [])
+      setCases(r2?.data?.cases || [])
+      setSuspects(r2?.data?.suspects || [])
     }
   }
 

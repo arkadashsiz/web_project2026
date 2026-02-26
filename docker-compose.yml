@@ -13,6 +13,8 @@ services:
       DJANGO_SUPERUSER_EMAIL: admin@example.com
       DJANGO_SUPERUSER_PHONE: "09120000000"
       DJANGO_SUPERUSER_NATIONAL_ID: "1000000000"
+      BACKEND_PUBLIC_URL: http://localhost:8000
+      FRONTEND_APP_URL: http://localhost:5173
     volumes:
       - ./backend:/app
     ports:
