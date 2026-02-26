@@ -2,6 +2,25 @@ import { useEffect, useState } from 'react'
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
 
+function WantedPhoto({ url, name }) {
+  const [broken, setBroken] = useState(false)
+  if (!url || broken) {
+    return (
+      <div style={{ width: 84, height: 84, borderRadius: 8, border: '1px dashed #ced7e8', display: 'grid', placeItems: 'center', fontSize: 12, color: '#667', textAlign: 'center', padding: 6 }}>
+        {url ? 'Photo Unavailable' : 'No Photo'}
+      </div>
+    )
+  }
+  return (
+    <img
+      src={url}
+      alt={name}
+      onError={() => setBroken(true)}
+      style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, border: '1px solid #ced7e8' }}
+    />
+  )
+}
+
 export default function HighAlertPage() {
   const { user } = useAuth()
   const [list, setList] = useState([])
@@ -28,9 +47,15 @@ export default function HighAlertPage() {
 
   const createWanted = async () => {
     setMessage('')
+    const photo = (form.photo_url || '').trim()
+    if (photo && !/^https?:\/\//i.test(photo)) {
+      setMessage('Photo URL must start with http:// or https://')
+      return
+    }
     try {
       const res = await api.post('/investigation/suspects/create_wanted_profile/', {
         ...form,
+        photo_url: photo,
         severity: Number(form.severity),
         days_wanted: Number(form.days_wanted),
       })
@@ -100,6 +125,12 @@ export default function HighAlertPage() {
             <button type="button" onClick={createWanted}>Create Wanted</button>
             <button type="button" onClick={load}>Refresh High Alert List</button>
           </div>
+          <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '84px 1fr', gap: 10, alignItems: 'center' }}>
+            <WantedPhoto url={form.photo_url} name={form.full_name || 'Preview'} />
+            <div style={{ color: '#546176', fontSize: 13 }}>
+              Photo preview. If this shows \"Photo Unavailable\", the URL is blocked/invalid/not public.
+            </div>
+          </div>
           {message && <p className="error" style={{ marginTop: 8 }}>{message}</p>}
         </div>
       )}
@@ -111,17 +142,7 @@ export default function HighAlertPage() {
           <div key={x.group_key} style={{ border: '1px solid #d8deea', borderRadius: 10, padding: 10, background: '#fff' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '84px 1fr', gap: 10 }}>
               <div>
-                {x.photo_url ? (
-                  <img
-                    src={x.photo_url}
-                    alt={x.full_name}
-                    style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, border: '1px solid #ced7e8' }}
-                  />
-                ) : (
-                  <div style={{ width: 84, height: 84, borderRadius: 8, border: '1px dashed #ced7e8', display: 'grid', placeItems: 'center', fontSize: 12, color: '#667' }}>
-                    No Photo
-                  </div>
-                )}
+                <WantedPhoto url={x.photo_url} name={x.full_name} />
               </div>
               <div style={{ display: 'grid', gap: 4 }}>
                 <strong>{x.full_name}</strong>
@@ -129,6 +150,14 @@ export default function HighAlertPage() {
                 <div>Max Wanted Days (Lj): {x.max_lj_days}</div>
                 <div>Max Severity (Di): {x.max_di}</div>
                 <div>Rank Score (Lj × Di): {x.rank_score}</div>
+                {x.photo_url && (
+                  <div>
+                    Photo URL:{' '}
+                    <a href={x.photo_url} target="_blank" rel="noreferrer" style={{ color: '#0b5ed7' }}>
+                      Open Image
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
             <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #eef2f9', fontWeight: 700, color: '#b00020' }}>

@@ -69,6 +69,13 @@ class BailPaymentViewSet(viewsets.ModelViewSet):
 
     def check_object_permissions(self, request, obj):
         super().check_object_permissions(request, obj)
+        if self.action == 'start_gateway':
+            # Payment start must be done by the suspect account (or superuser),
+            # not by the sergeant/manager who created the payment record.
+            if request.user.is_superuser or self._is_related_suspect(request.user, obj):
+                return
+            self.permission_denied(request, message='Only suspect can start gateway payment')
+
         if self._can_manage(request.user):
             return
         if self.action in ['list', 'retrieve', 'start_gateway'] and self._is_related_suspect(request.user, obj):

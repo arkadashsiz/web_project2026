@@ -9,6 +9,10 @@ class TipSerializer(serializers.ModelSerializer):
         claim = getattr(obj, 'claim', None)
         if not claim:
             return None
+        request = self.context.get('request')
+        # Reward code visibility must be limited to the tip submitter only.
+        if not request or request.user.id != obj.submitter_id:
+            return None
         return {
             'unique_code': claim.unique_code,
             'amount': claim.amount,

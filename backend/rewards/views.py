@@ -2,6 +2,8 @@ from rest_framework import decorators, permissions, status, viewsets
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
 
+from cases.models import Case
+from investigation.models import Suspect
 from rbac.permissions import user_has_action
 from .models import Tip, RewardClaim
 from .serializers import TipSerializer, RewardClaimSerializer
@@ -28,6 +30,13 @@ def is_police_rank_user(user):
     return False
 
 
+def is_base_user_only(user):
+    if user.is_superuser:
+        return False
+    role_names = {r.lower().strip() for r in user.user_roles.values_list('role__name', flat=True)}
+    return role_names == {'base user'}
+
+
 class TipViewSet(viewsets.ModelViewSet):
     queryset = Tip.objects.select_related('submitter', 'case', 'suspect').all()
     serializer_class = TipSerializer
@@ -44,7 +53,36 @@ class TipViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         if not has_action(self.request.user, 'tip.submit'):
             self.permission_denied(self.request, message='No permission')
+        if not is_base_user_only(self.request.user):
+            self.permission_denied(self.request, message='No permission')
         serializer.save(submitter=self.request.user)
+
+    @decorators.action(detail=False, methods=['get'])
+    def case_options(self, request):
+        if not has_action(request.user, 'tip.submit'):
+            return Response({'detail': 'No permission'}, status=403)
+        # Keep this endpoint limited to tip-submit context only.
+        rows = Case.objects.filter(
+            status__in=[Case.Status.OPEN, Case.Status.INVESTIGATING, Case.Status.SENT_TO_COURT]
+        ).order_by('-updated_at')[:300]
+        return Response([
+            {'id': c.id, 'title': c.title, 'status': c.status, 'severity': c.severity}
+            for c in rows
+        ])
+
+    @decorators.action(detail=False, methods=['get'])
+    def suspect_options(self, request):
+        if not has_action(request.user, 'tip.submit'):
+            return Response({'detail': 'No permission'}, status=403)
+        case_id = request.query_params.get('case_id')
+        qs = Suspect.objects.select_related('case').all().order_by('-id')
+        if case_id:
+            qs = qs.filter(case_id=case_id)
+        qs = qs[:300]
+        return Response([
+            {'id': s.id, 'full_name': s.full_name, 'status': s.status, 'case': s.case_id}
+            for s in qs
+        ])
 
     @decorators.action(detail=True, methods=['post'])
     def officer_review(self, request, pk=None):
@@ -54,7 +92,6 @@ class TipViewSet(viewsets.ModelViewSet):
         tip = self.get_object()
         valid = bool(request.data.get('valid', False))
         note = request.data.get('note', '')
-        detective_id = request.data.get('detective_id')
         tip.officer_note = note
         if valid:
             responsible_detective = None
@@ -62,12 +99,8 @@ class TipViewSet(viewsets.ModelViewSet):
                 responsible_detective = tip.case.assigned_detective
             elif tip.suspect and tip.suspect.case and tip.suspect.case.assigned_detective_id:
                 responsible_detective = tip.suspect.case.assigned_detective
-            if not responsible_detective and detective_id:
-                candidate = User.objects.filter(id=detective_id).first()
-                if candidate and (candidate.is_superuser or has_action(candidate, 'tip.detective_review')):
-                    responsible_detective = candidate
             if not responsible_detective:
-                return Response({'detail': 'No responsible detective found. Provide detective_id or assign case detective first.'}, status=400)
+                return Response({'detail': 'No responsible detective found. Assign a detective to the case first.'}, status=400)
             tip.status = Tip.Status.SENT_TO_DETECTIVE
             tip.assigned_detective = responsible_detective
             tip.save(update_fields=['status', 'assigned_detective', 'officer_note'])
@@ -93,7 +126,8 @@ class TipViewSet(viewsets.ModelViewSet):
             claim, _ = RewardClaim.objects.get_or_create(tip=tip)
             claim.amount = int(request.data.get('amount', 50_000_000))
             claim.save(update_fields=['amount'])
-            return Response({'tip': self.get_serializer(tip).data, 'claim': RewardClaimSerializer(claim).data})
+            # Do not expose reward code in detective response.
+            return Response({'tip': self.get_serializer(tip).data})
         tip.status = Tip.Status.REJECTED
         tip.save(update_fields=['status', 'detective_note'])
         return Response(self.get_serializer(tip).data)
@@ -103,6 +137,10 @@ class RewardClaimViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = RewardClaim.objects.select_related('tip', 'tip__submitter').all()
     serializer_class = RewardClaimSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Only tip submitter can see their own claim records and unique codes.
+        return self.queryset.filter(tip__submitter=self.request.user)
 
     @decorators.action(detail=False, methods=['post'])
     def verify(self, request):

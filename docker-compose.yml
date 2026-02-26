@@ -2,7 +2,17 @@ services:
   backend:
     build: ./backend
     container_name: police_backend
-    command: sh -c "python manage.py migrate && python manage.py seed_roles && python manage.py runserver 0.0.0.0:8000"
+    command: >
+      sh -c "python manage.py migrate &&
+      python manage.py seed_roles &&
+      python manage.py ensure_superuser &&
+      python manage.py runserver 0.0.0.0:8000"
+    environment:
+      DJANGO_SUPERUSER_USERNAME: admin
+      DJANGO_SUPERUSER_PASSWORD: Admin12345!
+      DJANGO_SUPERUSER_EMAIL: admin@example.com
+      DJANGO_SUPERUSER_PHONE: "09120000000"
+      DJANGO_SUPERUSER_NATIONAL_ID: "1000000000"
     volumes:
       - ./backend:/app
     ports:
@@ -12,6 +22,8 @@ services:
     build: ./frontend
     container_name: police_frontend
     command: sh -c "npm install && npm run dev -- --host"
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
     volumes:
       - ./frontend:/app
       - /app/node_modules

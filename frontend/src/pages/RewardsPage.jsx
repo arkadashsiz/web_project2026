@@ -2,9 +2,24 @@ import { useEffect, useMemo, useState } from 'react'
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
 
+function extractApiError(err, fallback) {
+  const data = err?.response?.data
+  if (!data) return fallback
+  if (typeof data === 'string') return data
+  if (typeof data.detail === 'string') return data.detail
+  const parts = []
+  Object.entries(data).forEach(([k, v]) => {
+    if (Array.isArray(v)) parts.push(`${k}: ${v.join(', ')}`)
+    else if (typeof v === 'string') parts.push(`${k}: ${v}`)
+    else parts.push(`${k}: ${JSON.stringify(v)}`)
+  })
+  return parts.length ? parts.join(' | ') : fallback
+}
+
 export default function RewardsPage() {
   const { user } = useAuth()
   const roleNames = useMemo(() => (user?.roles || []).map((r) => (r || '').toLowerCase()), [user])
+  const isBaseUserOnly = !user?.is_superuser && roleNames.length === 1 && roleNames[0] === 'base user'
   const isOfficer = user?.is_superuser || roleNames.includes('police officer')
   const isDetective = user?.is_superuser || roleNames.includes('detective')
   const isPoliceRank = user?.is_superuser || roleNames.some((r) => ['chief', 'captain', 'sergeant', 'detective', 'police officer', 'patrol officer', 'cadet', 'administrator'].includes(r))
@@ -24,21 +39,33 @@ export default function RewardsPage() {
   const [detectiveForm, setDetectiveForm] = useState({})
   const [verifyForm, setVerifyForm] = useState({ national_id: '', unique_code: '' })
   const [verifyResult, setVerifyResult] = useState(null)
+  const selectedCaseId = Number(submitForm.case || 0)
+  const filteredSuspects = useMemo(() => {
+    if (!selectedCaseId) return suspects
+    return suspects.filter((s) => Number(s.case) === selectedCaseId)
+  }, [suspects, selectedCaseId])
 
   const load = async () => {
-    const [tipsRes, casesRes, suspectsRes] = await Promise.all([
-      api.get('/rewards/tips/'),
-      api.get('/cases/cases/'),
-      api.get('/investigation/suspects/'),
-    ])
+    const tipsRes = await api.get('/rewards/tips/')
     setTips(tipsRes.data.results || [])
-    setCases(casesRes.data.results || [])
-    setSuspects(suspectsRes.data.results || [])
+
+    if (isBaseUserOnly) {
+      const [casesRes, suspectsRes] = await Promise.all([
+        api.get('/rewards/tips/case_options/'),
+        api.get('/rewards/tips/suspect_options/'),
+      ])
+      setCases(casesRes.data.results || casesRes.data || [])
+      setSuspects(suspectsRes.data.results || suspectsRes.data || [])
+    } else {
+      // Non-base users don't submit tips, so no need to fetch selection options.
+      setCases([])
+      setSuspects([])
+    }
   }
 
   useEffect(() => {
     load().catch(() => setMessage('Failed to load rewards data'))
-  }, [])
+  }, [isBaseUserOnly])
 
   const submit = async (e) => {
     e.preventDefault()
@@ -53,7 +80,7 @@ export default function RewardsPage() {
       setMessage('Tip submitted.')
       await load()
     } catch (err) {
-      setMessage(err?.response?.data?.detail || 'Failed to submit tip')
+      setMessage(extractApiError(err, 'Failed to submit tip'))
     }
   }
 
@@ -63,12 +90,11 @@ export default function RewardsPage() {
       await api.post(`/rewards/tips/${tipId}/officer_review/`, {
         valid,
         note: officerForm[tipId]?.note || '',
-        detective_id: officerForm[tipId]?.detective_id ? Number(officerForm[tipId]?.detective_id) : undefined,
       })
       setMessage(valid ? 'Tip sent to responsible detective.' : 'Tip rejected by officer.')
       await load()
     } catch (err) {
-      setMessage(err?.response?.data?.detail || 'Officer review failed')
+      setMessage(extractApiError(err, 'Officer review failed'))
     }
   }
 
@@ -83,7 +109,7 @@ export default function RewardsPage() {
       setMessage(useful ? 'Tip approved and reward code generated.' : 'Tip rejected by detective.')
       await load()
     } catch (err) {
-      setMessage(err?.response?.data?.detail || 'Detective review failed')
+      setMessage(extractApiError(err, 'Detective review failed'))
     }
   }
 
@@ -96,7 +122,7 @@ export default function RewardsPage() {
       setVerifyResult(res.data)
       setMessage('Reward claim verified successfully.')
     } catch (err) {
-      setMessage(err?.response?.data?.detail || 'Verification failed')
+      setMessage(extractApiError(err, 'Verification failed'))
     }
   }
 
@@ -104,29 +130,46 @@ export default function RewardsPage() {
     <div style={{ display: 'grid', gap: 14 }}>
       {message && <p className="error">{message}</p>}
 
-      <form className="panel" onSubmit={submit}>
-        <h3>Submit Tip (Public User)</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <select value={submitForm.case} onChange={(e) => setSubmitForm({ ...submitForm, case: e.target.value })}>
-            <option value="">Case (optional)</option>
-            {cases.map((c) => (
-              <option key={c.id} value={c.id}>#{c.id} {c.title}</option>
-            ))}
-          </select>
-          <select value={submitForm.suspect} onChange={(e) => setSubmitForm({ ...submitForm, suspect: e.target.value })}>
-            <option value="">Suspect (optional)</option>
-            {suspects.map((s) => (
-              <option key={s.id} value={s.id}>#{s.id} {s.full_name}</option>
-            ))}
-          </select>
+      {isBaseUserOnly && (
+        <form className="panel" onSubmit={submit}>
+          <h3>Submit Tip (Base User)</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <select
+              value={submitForm.case}
+              onChange={(e) => setSubmitForm({ ...submitForm, case: e.target.value, suspect: '' })}
+            >
+              <option value="">Case (optional)</option>
+              {cases.map((c) => (
+                <option key={c.id} value={c.id}>#{c.id} {c.title}</option>
+              ))}
+            </select>
+            <select
+              value={submitForm.suspect}
+              onChange={(e) => setSubmitForm({ ...submitForm, suspect: e.target.value })}
+            >
+              <option value="">Suspect (optional)</option>
+              {filteredSuspects.map((s) => (
+                <option key={s.id} value={s.id}>#{s.id} {s.full_name}</option>
+              ))}
+            </select>
+          </div>
+          <textarea
+            placeholder="Describe your information"
+            value={submitForm.content}
+            onChange={(e) => setSubmitForm({ ...submitForm, content: e.target.value })}
+          />
+          <button type="submit">Send Tip</button>
+        </form>
+      )}
+
+      {!isBaseUserOnly && (
+        <div className="panel">
+          <h3>Submit Tip (Base User Only)</h3>
+          <p style={{ margin: 0, color: '#546176' }}>
+            Only users with exactly the <strong>base user</strong> role can submit tips.
+          </p>
         </div>
-        <textarea
-          placeholder="Describe your information"
-          value={submitForm.content}
-          onChange={(e) => setSubmitForm({ ...submitForm, content: e.target.value })}
-        />
-        <button type="submit">Send Tip</button>
-      </form>
+      )}
 
       <div className="panel">
         <h3>Tips Workflow</h3>
@@ -151,12 +194,6 @@ export default function RewardsPage() {
                     placeholder="Officer review note"
                     value={officerForm[t.id]?.note || ''}
                     onChange={(e) => setOfficerForm((prev) => ({ ...prev, [t.id]: { ...(prev[t.id] || {}), note: e.target.value } }))}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Detective ID (optional)"
-                    value={officerForm[t.id]?.detective_id || ''}
-                    onChange={(e) => setOfficerForm((prev) => ({ ...prev, [t.id]: { ...(prev[t.id] || {}), detective_id: e.target.value } }))}
                   />
                   <button type="button" onClick={() => officerReview(t.id, true)}>Send To Detective</button>
                   <button type="button" onClick={() => officerReview(t.id, false)}>Reject</button>

@@ -13,7 +13,7 @@ class RewardFlowTest(APITestCase):
         self.user = User.objects.create_user(
             username='reporter', password='Strong12345', email='r@example.com', phone='09126666666', national_id='666'
         )
-        submit_role = Role.objects.create(name='complainant')
+        submit_role = Role.objects.create(name='base user')
         RolePermission.objects.create(role=submit_role, action='tip.submit')
         UserRole.objects.create(user=self.user, role=submit_role)
         self.client.force_authenticate(self.user)
@@ -65,8 +65,15 @@ class RewardFlowTest(APITestCase):
         self.client.force_authenticate(detective)
         resp2 = self.client.post(f"/api/rewards/tips/{tip['id']}/detective_review/", {'useful': True, 'amount': 1234, 'note': 'valid'}, format='json')
         self.assertEqual(resp2.status_code, 200)
-        self.assertEqual(resp2.data['claim']['amount'], 1234)
-        self.assertTrue(resp2.data['claim']['unique_code'])
+        self.assertEqual(resp2.data['tip']['status'], 'approved')
+        self.assertIsNone(resp2.data['tip']['claim'])
+
+        self.client.force_authenticate(self.user)
+        tip_list = self.client.get('/api/rewards/tips/', format='json')
+        rows = tip_list.data['results'] if isinstance(tip_list.data, dict) else tip_list.data
+        this_tip = [r for r in rows if r['id'] == tip['id']][0]
+        self.assertEqual(this_tip['claim']['amount'], 1234)
+        self.assertTrue(this_tip['claim']['unique_code'])
 
     def test_police_rank_can_verify_by_national_id_and_code(self):
         tip = self.client.post('/api/rewards/tips/', {
@@ -93,8 +100,13 @@ class RewardFlowTest(APITestCase):
         self.client.force_authenticate(officer)
         self.client.post(f"/api/rewards/tips/{tip['id']}/officer_review/", {'valid': True}, format='json')
         self.client.force_authenticate(detective)
-        approved = self.client.post(f"/api/rewards/tips/{tip['id']}/detective_review/", {'useful': True, 'amount': 9999}, format='json').data
-        code = approved['claim']['unique_code']
+        self.client.post(f"/api/rewards/tips/{tip['id']}/detective_review/", {'useful': True, 'amount': 9999}, format='json')
+
+        self.client.force_authenticate(self.user)
+        tip_list = self.client.get('/api/rewards/tips/', format='json')
+        rows = tip_list.data['results'] if isinstance(tip_list.data, dict) else tip_list.data
+        this_tip = [r for r in rows if r['id'] == tip['id']][0]
+        code = this_tip['claim']['unique_code']
 
         sergeant = User.objects.create_user(
             username='ser_verify', password='Strong12345', email='sv@example.com', phone='09129990002', national_id='997'

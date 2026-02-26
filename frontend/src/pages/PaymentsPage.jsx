@@ -20,6 +20,8 @@ export default function PaymentsPage() {
   const { user } = useAuth()
   const roleNames = useMemo(() => (user?.roles || []).map((r) => (r || '').toLowerCase()), [user])
   const isSergeant = user?.is_superuser || roleNames.includes('sergeant') || roleNames.includes('sergent') || roleNames.includes('sargent')
+  const canStartPayment = !isSergeant
+  const canSimulateSuccess = !!user?.is_superuser
 
   const [rows, setRows] = useState([])
   const [cases, setCases] = useState([])
@@ -29,13 +31,26 @@ export default function PaymentsPage() {
     case: '',
     suspect: '',
     amount: '',
-    sergeant_approved: false,
   })
   const selectedCaseId = Number(form.case || 0)
+  const selectedCase = useMemo(
+    () => cases.find((c) => Number(c.id) === selectedCaseId) || null,
+    [cases, selectedCaseId],
+  )
   const filteredSuspects = useMemo(() => {
-    if (!selectedCaseId) return []
-    return suspects.filter((s) => Number(s.case) === selectedCaseId)
-  }, [suspects, selectedCaseId])
+    if (!selectedCaseId || !selectedCase) return []
+    const severity = Number(selectedCase.severity)
+    return suspects.filter((s) => {
+      if (Number(s.case) !== selectedCaseId) return false
+      const status = String(s.status || '').toLowerCase()
+      // Project rules:
+      // - arrested suspects: only level 2/3 cases (severity 2 or 1)
+      // - criminals: only level 3 cases (severity 1) + sergeant approval at submit
+      if (status === 'arrested') return severity === 1 || severity === 2
+      if (status === 'criminal') return severity === 1
+      return false
+    })
+  }, [suspects, selectedCaseId, selectedCase])
 
   const load = async () => {
     const reqs = [api.get('/payments/bail/')]
@@ -63,10 +78,10 @@ export default function PaymentsPage() {
         case: Number(form.case),
         suspect: Number(form.suspect),
         amount: Number(form.amount),
-        sergeant_approved: !!form.sergeant_approved,
+        sergeant_approved: true,
       })
       setMessage('Payment record created.')
-      setForm({ case: '', suspect: '', amount: '', sergeant_approved: false })
+      setForm({ case: '', suspect: '', amount: '' })
       await load()
     } catch (err) {
       setMessage(extractApiError(err, 'Failed to create payment'))
@@ -130,19 +145,18 @@ export default function PaymentsPage() {
             <input
               type="number"
               min="1000"
+              required
               placeholder="Amount"
               value={form.amount}
               onChange={(e) => setForm({ ...form, amount: e.target.value })}
             />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={form.sergeant_approved}
-                onChange={(e) => setForm({ ...form, sergeant_approved: e.target.checked })}
-              />
-              Sergeant approved
-            </label>
+            <div />
           </div>
+          {form.case && filteredSuspects.length === 0 && (
+            <p className="error" style={{ marginTop: 8 }}>
+              No eligible suspects for this case based on payment rules.
+            </p>
+          )}
           <button type="submit" style={{ marginTop: 8 }}>Create Payment</button>
         </form>
       )}
@@ -155,8 +169,8 @@ export default function PaymentsPage() {
               <div>Payment #{r.id} | Case {r.case} | Suspect {r.suspect} | Amount {Number(r.amount || 0).toLocaleString()} | {r.status}</div>
               <div>Authority: {r.authority || '-'} | Ref: {r.payment_ref || '-'} | Sergeant approved: {r.sergeant_approved ? 'yes' : 'no'}</div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-                {r.status === 'initiated' && <button type="button" onClick={() => startGateway(r.id)}>Start Gateway Payment</button>}
-                {isSergeant && r.status === 'initiated' && <button type="button" onClick={() => simulateSuccess(r.id)}>Simulate Success (Dev)</button>}
+                {canStartPayment && r.status === 'initiated' && <button type="button" onClick={() => startGateway(r.id)}>Start Gateway Payment</button>}
+                {canSimulateSuccess && r.status === 'initiated' && <button type="button" onClick={() => simulateSuccess(r.id)}>Simulate Success (Dev)</button>}
               </div>
             </li>
           ))}

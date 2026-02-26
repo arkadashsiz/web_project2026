@@ -26,7 +26,6 @@ export default function CasesPage() {
   })
   const [workflow, setWorkflow] = useState({
     caseId: '',
-    complainantRecordId: '',
     cadetApproved: true,
     cadetNote: '',
     officerApproved: true,
@@ -49,6 +48,29 @@ export default function CasesPage() {
       ),
     [cases]
   )
+  const selectedComplaint = useMemo(() => {
+    const id = Number(workflow.caseId || 0)
+    if (!id) return null
+    return complaintQueue.find((c) => c.id === id) || cases.find((c) => c.id === id) || null
+  }, [workflow.caseId, complaintQueue, cases])
+  const canCurrentUserResubmitSelectedComplaint = useMemo(() => {
+    if (!selectedComplaint || !user) return false
+    if (user.is_superuser) return true
+    if (selectedComplaint.created_by === user.id) return true
+    const complainants = selectedComplaint.complainants || []
+    return complainants.some((c) => Number(c.user) === Number(user.id))
+  }, [selectedComplaint, user])
+  const canUseComplaintDesk = (c) => {
+    if (!user || !c) return false
+    if (user.is_superuser || isCadet || isOfficer) return true
+    if (Number(c.created_by) === Number(user.id)) return true
+    return (c.complainants || []).some((x) => Number(x.user) === Number(user.id))
+  }
+  const canSeeComplaintDesk = useMemo(() => {
+    if (!user) return false
+    if (user.is_superuser || isCadet || isOfficer) return true
+    return complaintQueue.some((c) => canUseComplaintDesk(c))
+  }, [user, isCadet, isOfficer, complaintQueue])
   const caseList = useMemo(
     () => {
       const complaintCases = cases.filter(
@@ -135,20 +157,20 @@ export default function CasesPage() {
     }
   }
 
-  const cadetReviewComplainant = () => callWorkflow(() =>
-    api.post(`/cases/cases/${workflow.caseId}/intern_review_complainant/`, {
-      complainant_id: Number(workflow.complainantRecordId),
+  const cadetFinalReview = () => callWorkflow(async () => {
+    const pending = (selectedComplaint?.complainants || []).filter((x) => x.status === 'pending')
+    for (const row of pending) {
+      await api.post(`/cases/cases/${workflow.caseId}/intern_review_complainant/`, {
+        complainant_id: Number(row.id),
+        approved: workflow.cadetApproved,
+        note: workflow.cadetNote,
+      })
+    }
+    await api.post(`/cases/cases/${workflow.caseId}/intern_review/`, {
       approved: workflow.cadetApproved,
       note: workflow.cadetNote,
     })
-  )
-
-  const cadetFinalReview = () => callWorkflow(() =>
-    api.post(`/cases/cases/${workflow.caseId}/intern_review/`, {
-      approved: workflow.cadetApproved,
-      note: workflow.cadetNote,
-    })
-  )
+  })
 
   const officerFinalReview = () => callWorkflow(() =>
     api.post(`/cases/cases/${workflow.caseId}/officer_review/`, {
@@ -321,10 +343,14 @@ export default function CasesPage() {
                 <li key={c.id}>
                   <div>
                     <strong>Complaint #{c.id}</strong> {c.title} | status: {c.status}
-                    <button type="button" style={{ marginLeft: 8 }} onClick={() => useInDesk(c)}>Use in desk</button>
+                    {canUseComplaintDesk(c) && (
+                      <button type="button" style={{ marginLeft: 8 }} onClick={() => useInDesk(c)}>Use in desk</button>
+                    )}
                   </div>
                   {c.complaint_submission && (
                     <div style={{ marginTop: 6, fontSize: 13 }}>
+                      <div><strong>severity:</strong> {c.severity}</div>
+                      <div><strong>description:</strong> {c.description}</div>
                       stage: {c.complaint_submission.stage} | attempts: {c.complaint_submission.attempt_count}
                       {c.complaint_submission.last_error_message && (
                         <div><strong>last error:</strong> {c.complaint_submission.last_error_message}</div>
@@ -375,8 +401,14 @@ export default function CasesPage() {
             </ul>
           </div>
 
+          {canSeeComplaintDesk && (
           <div className="panel">
             <h3>Complaint Workflow Desk</h3>
+            {!workflow.caseId && (
+              <p style={{ margin: 0, color: '#546176' }}>
+                Select a complaint from queue. Desk access is restricted by your role and relation to complaint.
+              </p>
+            )}
             {workflow.caseId && (
               <p style={{ margin: 0 }}>
                 <strong>Selected:</strong> complaint #{workflow.caseId} {selectedCaseTitle ? `- ${selectedCaseTitle}` : ''}
@@ -387,23 +419,49 @@ export default function CasesPage() {
             </p>
             <input placeholder="Case ID" value={workflow.caseId} onChange={(e) => setWorkflow({ ...workflow, caseId: e.target.value })} />
 
+            {selectedComplaint && (
+              <div style={{ border: '1px solid #d8deea', borderRadius: 8, padding: 10 }}>
+                <h4 style={{ marginTop: 0 }}>Selected Complaint Details</h4>
+                <div><strong>Title:</strong> {selectedComplaint.title}</div>
+                <div><strong>Description:</strong> {selectedComplaint.description}</div>
+                <div><strong>Severity:</strong> {selectedComplaint.severity}</div>
+                <div><strong>Status:</strong> {selectedComplaint.status}</div>
+                <div><strong>Created by user id:</strong> {selectedComplaint.created_by}</div>
+                {selectedComplaint.complaint_submission && (
+                  <>
+                    <div><strong>Stage:</strong> {selectedComplaint.complaint_submission.stage}</div>
+                    <div><strong>Attempts:</strong> {selectedComplaint.complaint_submission.attempt_count}</div>
+                    {selectedComplaint.complaint_submission.last_error_message && (
+                      <div><strong>Last error:</strong> {selectedComplaint.complaint_submission.last_error_message}</div>
+                    )}
+                    {selectedComplaint.complaint_submission.intern_note && (
+                      <div><strong>Cadet note:</strong> {selectedComplaint.complaint_submission.intern_note}</div>
+                    )}
+                    {selectedComplaint.complaint_submission.officer_note && (
+                      <div><strong>Officer note:</strong> {selectedComplaint.complaint_submission.officer_note}</div>
+                    )}
+                  </>
+                )}
+                <div style={{ marginTop: 6 }}>
+                  <strong>Complainants:</strong>{' '}
+                  {(selectedComplaint.complainants || [])
+                    .map((x) => `#${x.id} user:${x.user} (${x.status})${x.review_note ? ` note:${x.review_note}` : ''}`)
+                    .join(' | ') || '-'}
+                </div>
+              </div>
+            )}
+
             <div className="two-col">
               <div style={{ display: 'grid', gap: 8 }}>
                 {isCadet && (
                   <>
                     <h4>Cadet Actions</h4>
-                    <input
-                      placeholder="Complainant Record ID"
-                      value={workflow.complainantRecordId}
-                      onChange={(e) => setWorkflow({ ...workflow, complainantRecordId: e.target.value })}
-                    />
                     <select value={workflow.cadetApproved ? 'true' : 'false'} onChange={(e) => setWorkflow({ ...workflow, cadetApproved: e.target.value === 'true' })}>
                       <option value="true">Approve</option>
                       <option value="false">Reject</option>
                     </select>
                     <textarea placeholder="Cadet note / mandatory error message on reject" value={workflow.cadetNote} onChange={(e) => setWorkflow({ ...workflow, cadetNote: e.target.value })} />
-                    <button type="button" onClick={cadetReviewComplainant}>Save Complainant Review</button>
-                    <button type="button" onClick={cadetFinalReview}>Cadet Final Review</button>
+                    <button type="button" onClick={cadetFinalReview}>Submit Cadet Review</button>
                   </>
                 )}
 
@@ -423,21 +481,31 @@ export default function CasesPage() {
                   </>
                 )}
 
-                <h4>Complainant Resubmit</h4>
-                <input placeholder="Updated title" value={workflow.resubmitTitle} onChange={(e) => setWorkflow({ ...workflow, resubmitTitle: e.target.value })} />
-                <textarea placeholder="Updated description" value={workflow.resubmitDescription} onChange={(e) => setWorkflow({ ...workflow, resubmitDescription: e.target.value })} />
-                <select value={workflow.resubmitSeverity} onChange={(e) => setWorkflow({ ...workflow, resubmitSeverity: Number(e.target.value) })}>
-                  <option value={1}>Level 3</option>
-                  <option value={2}>Level 2</option>
-                  <option value={3}>Level 1</option>
-                  <option value={4}>Critical</option>
-                </select>
-                <button type="button" onClick={complainantResubmit}>Submit Resubmission</button>
+                {canCurrentUserResubmitSelectedComplaint && (
+                  <>
+                    <h4>Complainant Resubmit</h4>
+                    <input placeholder="Updated title" value={workflow.resubmitTitle} onChange={(e) => setWorkflow({ ...workflow, resubmitTitle: e.target.value })} />
+                    <textarea placeholder="Updated description" value={workflow.resubmitDescription} onChange={(e) => setWorkflow({ ...workflow, resubmitDescription: e.target.value })} />
+                    <select value={workflow.resubmitSeverity} onChange={(e) => setWorkflow({ ...workflow, resubmitSeverity: Number(e.target.value) })}>
+                      <option value={1}>Level 3</option>
+                      <option value={2}>Level 2</option>
+                      <option value={3}>Level 1</option>
+                      <option value={4}>Critical</option>
+                    </select>
+                    <button type="button" onClick={complainantResubmit}>Submit Resubmission</button>
+                  </>
+                )}
+                {!canCurrentUserResubmitSelectedComplaint && (
+                  <p style={{ margin: 0, color: '#546176' }}>
+                    Complainant Resubmit is visible only to the complaint owner/complainants.
+                  </p>
+                )}
               </div>
             </div>
 
             {workflowMsg && <p className={workflowMsgType === 'error' ? 'error' : ''}>{workflowMsg}</p>}
           </div>
+          )}
         </>
       )}
 

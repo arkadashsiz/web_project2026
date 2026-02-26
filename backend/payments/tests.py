@@ -35,3 +35,11 @@ class PaymentFlowTest(APITestCase):
         pid = resp.data['id']
         cb = self.client.post(f'/api/payments/bail/{pid}/callback/', {'status': 'success', 'payment_ref': 'ABC1'}, format='json')
         self.assertEqual(cb.status_code, 200)
+
+    def test_bail_create_requires_amount(self):
+        resp = self.client.post('/api/payments/bail/', {
+            'case': self.case.id,
+            'suspect': self.suspect.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('amount', resp.data)
