@@ -43,6 +43,6 @@ python3 manage.py test accounts cases
 
 ## Docker
 ```bash
-cd /Users/reza/Documents/sag
-docker compose up --build
+cd /PROJECT_DIR/
+docker compose up
 ```
