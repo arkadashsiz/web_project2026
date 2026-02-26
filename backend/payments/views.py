@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.conf import settings
 from django.urls import reverse
+from django.db.models import Q
 import json
 import ssl
 import time
@@ -107,6 +108,38 @@ class BailPaymentViewSet(viewsets.ModelViewSet):
 
         serializer.save(created_by=self.request.user)
 
+    @decorators.action(detail=False, methods=['get'])
+    def create_options(self, request):
+        if not self._can_manage(request.user):
+            return Response({'detail': 'No permission'}, status=403)
+
+        eligible_suspects = Suspect.objects.select_related('case').filter(
+            Q(status=Suspect.Status.ARRESTED, case__severity__in=[Case.Severity.LEVEL_3, Case.Severity.LEVEL_2])
+            | Q(status=Suspect.Status.CRIMINAL, case__severity=Case.Severity.LEVEL_3)
+        )
+
+        case_map = {}
+        suspects_out = []
+        for s in eligible_suspects.order_by('-id'):
+            c = s.case
+            case_map[c.id] = {
+                'id': c.id,
+                'title': c.title,
+                'severity': c.severity,
+                'status': c.status,
+            }
+            suspects_out.append({
+                'id': s.id,
+                'full_name': s.full_name,
+                'status': s.status,
+                'case': c.id,
+            })
+
+        return Response({
+            'cases': list(case_map.values()),
+            'suspects': suspects_out,
+        })
+
     @decorators.action(detail=True, methods=['post'])
     def start_gateway(self, request, pk=None):
         obj = self.get_object()
@@ -116,7 +149,8 @@ class BailPaymentViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Payment is not in initiated state.'}, status=400)
 
         merchant_id = getattr(settings, 'ZARINPAL_MERCHANT_ID', '')
-        callback_url = request.build_absolute_uri(reverse('payment-return-page')) + f'?payment_id={obj.id}'
+        backend_base = getattr(settings, 'BACKEND_PUBLIC_URL', 'http://localhost:8000').rstrip('/')
+        callback_url = f'{backend_base}{reverse("payment-return-page")}?payment_id={obj.id}'
         if int(obj.amount) < 1000:
             return Response({'detail': 'Amount must be at least 1000 for Zarinpal.'}, status=400)
 
