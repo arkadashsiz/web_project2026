@@ -1,0 +1,371 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[a4paper,top=2.5cm,bottom=2.5cm,left=2.5cm,right=2.5cm]{geometry}
+\usepackage{xepersian}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+
+% تنظیم فونت فارسی (در صورت نیاز فونت خود را تنظیم کنید)
+\settextfont[Scale=1.2]{IRXLotus}
+\setlatintextfont{Times New Roman}
+
+% تنظیم رنگ و استایل کدها
+\lstset{
+    basicstyle=\ttfamily\small,
+    numbers=left,
+    numberstyle=\tiny,
+    frame=single,
+    backgroundcolor=\color[gray]{0.95},
+    breaklines=true,
+    captionpos=b,
+    language=Python,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red}
+}
+
+\title{\textbf{گزارش نهایی پروژه وب}\\[0.5cm]
+\large سامانه اتوماسیون اداری پلیس}
+\author{
+گروه ۸ \\
+اعضای تیم: \\
+سیدامیرحسین موسوی‌فرد \\
+رضا اسلامی‌ابیانه \\
+سیداحمد موسوی‌اول \\
+\\
+استاد: دکتر علی ابریشمی \\
+ترم پاییز ۱۴۰۴-۱۴۰۵
+}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\newpage
+
+\tableofcontents
+\newpage
+
+\section{مقدمه}
+این سند گزارش نهایی پروژه‌ی طراحی و پیاده‌سازی سامانه اتوماسیون اداری پلیس است که با استفاده از معماری مبتنی بر Django \lr{(Backend)} و React \lr{(Frontend)} توسعه یافته است. هدف از این سند ارائه‌ی نمای کلی از معماری، تصمیمات فنی، ساختار پروژه، و فرآیند توسعه می‌باشد.
+
+\section{معماری کلی پروژه}
+پروژه از سه لایه اصلی تشکیل شده است:
+\begin{itemize}
+    \item \textbf{بک‌اند (Backend)}: مبتنی بر \lr{Django} و \lr{Django REST Framework} با پایگاه داده \lr{SQLite} (قابل تغییر به \lr{PostgreSQL} در محیط عملیاتی).
+    \item \textbf{فرانت‌اند (Frontend)}: \lr{React} همراه با \lr{Vite}، \lr{React Router} و \lr{Axios} برای ارتباط با \lr{API}.
+    \item \textbf{دocker}: جهت ایجاد محیط توسعه یکسان برای تمام اعضای تیم.
+\end{itemize}
+
+\section{گزارش فنی بک‌اند}
+\subsection{استک فناوری}
+\begin{itemize}
+    \item \lr{Django 4.x}
+    \item \lr{Django REST Framework}
+    \item \lr{Simple JWT} برای احراز هویت مبتنی بر توکن
+    \item \lr{SQLite} (در حال حاضر)
+\end{itemize}
+
+\subsection{ساختار اپلیکیشن‌ها}
+پروژه بک‌اند شامل اپلیکیشن‌های مستقل زیر است:
+\begin{description}
+    \item[accounts] مدیریت کاربران، ثبت‌نام، ورود و پروفایل
+    \item[rbac] کنترل دسترسی پویا بر اساس نقش (Role) و مجوز (Permission)
+    \item[cases] مدیریت پرونده‌ها، شکوائیه‌ها، صحنه جرم و چرخه حیات پرونده
+    \item[evidence] مدیریت انواع ادله (شاهدی، بیولوژیک، خودرو، مدارک هویتی و ...)
+    \item[investigation] تخته کارآگاه، مظنونین، بازجویی و اعلان‌ها
+    \item[judiciary] جلسات دادگاه و صدور رأی
+    \item[rewards] ثبت گزارش‌های مردمی و فرآیند پاداش
+    \item[payments] پرداخت وثیقه و جریمه (اختیاری، متصل به درگاه زرین‌پال)
+    \item[dashboard] آمار و نمایش ماژول‌ها بر اساس نقش
+\end{description}
+
+\subsection{طراحی API}
+\begin{itemize}
+    \item \textbf{نشانی پایه}: \lr{http://localhost:8000/api/}
+    \item \textbf{سبک}: \lr{RESTful} همراه با نقاط پایانی خاص گردش کار (نه صرفاً \lr{CRUD})
+    \item \textbf{احراز هویت}: ارسال توکن \lr{JWT} در هدر \lr{Authorization}
+    \item \textbf{مستندسازی}: با استفاده از \lr{drf-spectacular} (Swagger)
+\end{itemize}
+
+\subsection{قوانین داده و دسترسی}
+\begin{itemize}
+    \item هر کاربر دارای فیلدهای یکتا مانند نام کاربری، ایمیل، شماره ملی و تلفن است.
+    \item سیستم \lr{RBAC} پویا بوده و مدیر می‌تواند نقش‌ها را بدون تغییر کد ویرایش کند.
+    \item کاربران می‌توانند چند نقش داشته باشند.
+    \item قوانین کسب‌وکار در سطح سریالایزرها و ویوها اعمال می‌شود.
+\end{itemize}
+
+\subsection{پرداخت (اختیاری)}
+اپلیکیشن \lr{payments} امکان تعریف مبلغ وثیقه توسط گروهبان، بررسی مظنونین واجد شرایط، اتصال به درگاه آزمایشی زرین‌پال و بازگشت به صفحه نتیجه را فراهم می‌کند.
+
+\subsection{اجرای محلی}
+بدون \lr{Docker}:
+\begin{latin}
+\begin{lstlisting}[language=bash]
+cd /Users/reza/Documents/sag/backend
+source .venv/bin/activate
+python manage.py migrate
+python manage.py seed_roles
+python manage.py runserver
+\end{lstlisting}
+\end{latin}
+
+\section{گزارش فنی فرانت‌اند}
+\subsection{استک فناوری}
+\begin{itemize}
+    \item \lr{React 18}
+    \item \lr{Vite} (به عنوان build tool و dev server)
+    \item \lr{React Router DOM} برای مسیریابی
+    \item \lr{Axios} برای درخواست‌های HTTP
+    \item \lr{html2canvas} برای خروجی تصویری از تخته کارآگاه
+\end{itemize}
+
+\subsection{ساختار پروژه}
+\begin{dir}
+\begin{itemize}
+    \item \lr{src/pages}: صفحات اصلی (ورود، داشبورد، پرونده‌ها، ادله، تخته کارآگاه، دادگاه، پاداش، پرداخت)
+    \item \lr{src/components}: کامپوننت‌های قابل استفاده مجدد (مانند \lr{ProtectedRoute})
+    \item \lr{src/context}: \lr{AuthContext} برای مدیریت وضعیت احراز هویت و نقش کاربر
+    \item \lr{src/api}: تنظیمات \lr{Axios} و ارتباط با بک‌اند
+    \item \lr{src/App.jsx}: تعریف مسیرها
+    \item \lr{src/ThemeContext.jsx}: کنترل تم روشن/تاریک
+\end{itemize}
+\end{dir}
+
+\subsection{مسیریابی}
+مسیرهای عمومی:
+\begin{dir}
+\begin{itemize}
+    \item \lr{/} – صفحه اصلی
+    \item \lr{/login} – ورود
+    \item \lr{/register} – ثبت‌نام
+\end{itemize}
+مسیرهای محافظت‌شده:
+\begin{itemize}
+    \item \lr{/dashboard}، \lr{/cases}، \lr{/evidence}، \lr{/board}، \lr{/reports}، \lr{/judiciary}، \lr{/rewards}، \lr{/payments}، \lr{/admin-rbac}
+\end{itemize}
+\end{dir}
+
+\subsection{یکپارچگی با API}
+\begin{itemize}
+    \item ارتباط با \lr{API} از طریق \lr{Axios} و استفاده از توکن \lr{JWT} ذخیره‌شده.
+    \item نمایش پیام‌های خطای دریافتی از سرور به کاربر.
+\end{itemize}
+
+\subsection{اجرای محلی}
+\begin{latin}
+\begin{lstlisting}[language=bash]
+cd /ProjectRoot/frontend
+npm install
+npm run dev -- --host
+\end{lstlisting}
+\end{latin}
+
+\section{گزارش فنی Docker}
+\subsection{هدف}
+استفاده از \lr{Docker} برای ایجاد محیط توسعه یکسان، حذف مشکلات وابستگی‌ها و ساده‌سازی راه‌اندازی پروژه برای اعضای تیم.
+
+\subsection{سرویس‌های Docker Compose}
+فایل \lr{docker-compose.yml} شامل دو سرویس است:
+\begin{itemize}
+    \item \lr{backend}: اجرای مهاجرت‌ها، بذر نقش‌ها و راه‌اندازی سرور \lr{Django} روی پورت \lr{8000}
+    \item \lr{frontend}: اجرای سرور توسعه \lr{Vite} روی پورت \lr{5173} و وابسته به \lr{backend}
+\end{itemize}
+
+\subsection{پورت‌ها و Volumeها}
+\begin{itemize}
+    \item پورت‌ها: \lr{8000:8000} (بک‌اند) و \lr{5173:5173} (فرانت‌اند)
+    \item \lr{Volume} برای \lr{backend}: \lr{./backend:/app} – برای بازتاب تغییرات لحظه‌ای کد
+    \item \lr{Volume} برای \lr{frontend}: \lr{./frontend:/app} و \lr{/app/node_modules} – جهت حفظ ماژول‌های نصب‌شده در کانتینر
+\end{itemize}
+
+\subsection{دستورات پرکاربرد}
+\begin{latin}
+\begin{lstlisting}[language=bash]
+# اجرای کامل پروژه
+docker compose up
+
+# اجرای فقط یک سرویس
+docker compose up backend
+docker compose up frontend
+
+# توقف سرویس‌ها
+docker compose down
+
+# مشاهده لاگ‌ها
+docker compose logs -f backend
+docker compose logs -f frontend
+\end{lstlisting}
+\end{latin}
+
+\subsection{تذکر محیط توسعه در مقابل تولید}
+تنظیمات فعلی برای توسعه سریع بهینه شده است. برای محیط تولید باید از فایل‌های ایستا فرانت‌اند و سرور \lr{WSGI/ASGI} برای بک‌اند استفاده شود.
+
+\section{گزارش نهایی پروژه}
+\subsection{اعضای تیم و مسئولیت‌ها}
+\begin{itemize}
+    \item \textbf{رضا اسلامی ابیانه}: طراحی و پیاده‌سازی بک‌اند با \lr{Django/DRF}، مدل‌سازی موجودیت‌ها، \lr{RBAC}، \lr{JWT}، مستندسازی \lr{Swagger} و تست‌نویسی.
+    \item \textbf{سیدامیرحسین موسوی‌فرد}: طراحی و پیاده‌سازی فرانت‌اند با \lr{React + Vite}، صفحات اصلی، داشبورد ماژولار، مدیریت \lr{State} و اتصال \lr{API}.
+    \item \textbf{سیداحمد موسوی‌اول}: یکپارچه‌سازی فرانت و بک‌اند، \lr{Docker Compose}، رفع باگ‌های سناریویی، تست نهایی و مستندسازی.
+\end{itemize}
+بازه زمانی کلی: از تحلیل نیازمندی تا تکمیل فازهای پرونده، شواهد، تحقیق، محاکمه، پاداش و پرداخت.
+
+\subsection{قراردادهای توسعه}
+\begin{itemize}
+    \item \textbf{نام‌گذاری}:
+        \begin{itemize}
+            \item بک‌اند: \lr{snake\_case} برای فیلدها و توابع، \lr{PascalCase} برای نام مدل‌ها.
+            \item فرانت‌اند: \lr{PascalCase} برای کامپوننت‌ها، \lr{camelCase} برای هوک‌ها و توابع.
+            \item \lr{Endpoint}ها: \lr{RESTful} و معنادار مانند \lr{/api/cases/cases/} و \lr{/api/payments/bail/}.
+        \end{itemize}
+    \item \textbf{قالب پیام کامیت}:
+        \begin{itemize}
+            \item \lr{feat}: ... برای ویژگی جدید
+            \item \lr{fix}: ... برای رفع باگ
+            \item \lr{refactor}: ... برای بازآرایی
+            \item \lr{test}: ... برای تست
+            \item \lr{docs}: ... برای مستندات
+        \end{itemize}
+    \item \textbf{قوانین Pull Request}:
+        \begin{itemize}
+            \item هر \lr{PR} شامل توضیح تغییر، دلیل، اسکرین‌شات (در صورت نیاز) و وضعیت تست.
+        \end{itemize}
+    \item \textbf{قوانین کیفیت}:
+        \begin{itemize}
+            \item عدم ادغام بدون گذراندن تست‌های اصلی.
+            \item عدم تغییر رفتار حساس بدون بررسی سطح دسترسی.
+        \end{itemize}
+\end{itemize}
+
+\subsection{مدیریت پروژه و تقسیم وظایف}
+کارها به \lr{Epic}های اصلی تقسیم شد:
+\begin{enumerate}
+    \item احراز هویت و نقش‌ها
+    \item تشکیل پرونده (شکوائیه / صحنه جرم)
+    \item شواهد
+    \item تخته کارآگاه و روند بررسی مظنون
+    \item بازجویی و امتیازدهی
+    \item محاکمه
+    \item تحت پیگیری شدید
+    \item پاداش
+    \item پرداخت وثیقه و جریمه (اختیاری)
+\end{enumerate}
+اولویت اجرا: بک‌اند پایدار و API → سپس \lr{UI} → سپس اصلاح مجوزها و سناریوهای واقعی → سپس تست و ریزه‌کاری \lr{UX}.
+
+\subsection{موجودیت‌های کلیدی سامانه}
+\begin{itemize}
+    \item \lr{User}: کاربر پایه با اطلاعات هویتی یکتا.
+    \item \lr{Role}، \lr{Permission}، \lr{UserRole}: پیاده‌سازی \lr{RBAC} پویا.
+    \item \lr{Case}: هسته پرونده با منبع، شدت جرم، وضعیت و افراد درگیر.
+    \item \lr{ComplaintSubmission}: چرخه ثبت شکوائیه و بازگشت به شاکی/کارآموز/افسر.
+    \item \lr{CaseComplainant}، \lr{CaseWitness}، \lr{CaseLog}: ثبت چند شاکی، شاهدان و تاریخچه.
+    \item موجودیت‌های شواهد (شاهدی، زیستی، خودرو، مدارک هویتی، سایر).
+    \item \lr{DetectiveBoard}، \lr{BoardNode}، \lr{BoardEdge}: تخته کارآگاه و اتصال مدارک.
+    \item \lr{Suspect}، \lr{SuspectSubmission}، \lr{Interrogation}، \lr{Notification}: مظنون، تأیید گروهبان، بازجویی و اعلان.
+    \item \lr{CourtSession}: محاکمه و ثبت رأی برای هر مظنون.
+    \item \lr{Tip} / \lr{Reward}: ثبت اطلاعات مردمی، بررسی، صدور کد یکتا.
+    \item \lr{BailPayment}: مدیریت پرداخت وثیقه/جریمه و اتصال به درگاه.
+\end{itemize}
+
+\subsection{پکیج‌های NPM استفاده‌شده (حداکثر ۶ مورد)}
+\begin{enumerate}
+    \item \lr{react}: هسته کتابخانه ساخت \lr{UI}.
+    \item \lr{react-dom}: رندر \lr{React} در مرورگر.
+    \item \lr{react-router-dom}: مسیریابی \lr{SPA}.
+    \item \lr{axios}: ارتباط با \lr{API}.
+    \item \lr{vite}: سرعت در توسعه و بیلد.
+    \item \lr{html2canvas}: خروجی تصویری از تخته کارآگاه.
+\end{enumerate}
+
+\subsection{نمونه کدهای تولیدشده با هوش مصنوعی}
+\subsubsection{منطق پرداخت و Verify در بک‌اند}
+\begin{latin}
+\begin{lstlisting}[language=Python]
+payload = {
+    "merchant_id": merchant_id,
+    "amount": int(obj.amount),
+    "description": f"Bail/Fine payment for case #{obj.case_id} suspect #{obj.suspect_id}",
+    "callback_url": callback_url,
+}
+result = zarinpal_post(settings.ZARINPAL_REQUEST_URL, payload)
+\end{lstlisting}
+\end{latin}
+
+\subsubsection{اعتبارسنجی قانون پرداخت}
+\begin{latin}
+\begin{lstlisting}[language=Python]
+if suspect.status == Suspect.Status.ARRESTED:
+    if case.severity not in [Case.Severity.LEVEL_2, Case.Severity.LEVEL_3]:
+        raise ValidationError("Only level 2 and level 3 arrested suspects are eligible.")
+elif suspect.status == Suspect.Status.CRIMINAL:
+    if case.severity != Case.Severity.LEVEL_3 or not sergeant_approved:
+        raise ValidationError("Sergeant approval is required for level 3 criminal release.")
+\end{lstlisting}
+\end{latin}
+
+\subsubsection{فیلتر مظنون در فرانت‌اند}
+\begin{latin}
+\begin{lstlisting}[language=JavaScript]
+const filteredSuspects = useMemo(() => {
+  if (!selectedCaseId) return []
+  return suspects.filter((s) => Number(s.case) === selectedCaseId)
+}, [suspects, selectedCaseId])
+\end{lstlisting}
+\end{latin}
+
+\subsection{قوت‌ها و ضعف‌های هوش مصنوعی در توسعه فرانت‌اند}
+\begin{itemize}
+    \item \textbf{قوت‌ها}:
+        \begin{itemize}
+            \item تولید سریع اسکلت صفحات و فرم‌ها.
+            \item کمک در اتصال \lr{API} و مدیریت وضعیت‌های بارگذاری/خطا.
+            \item سرعت بالا در رفع باگ‌های کوچک رابط کاربری.
+        \end{itemize}
+    \item \textbf{ضعف‌ها}:
+        \begin{itemize}
+            \item احتمال ناهماهنگی با منطق دقیق مجوزها.
+            \item نیاز به بازبینی انسانی برای تجربه کاربری واقعی سناریوهای پیچیده.
+            \item احتمال تولید پیام خطای عمومی و غیرکاربردی.
+        \end{itemize}
+\end{itemize}
+
+\subsection{قوت‌ها و ضعف‌های هوش مصنوعی در توسعه بک‌اند}
+\begin{itemize}
+    \item \textbf{قوت‌ها}:
+        \begin{itemize}
+            \item سرعت در ساخت \lr{CRUD}، \lr{ViewSet}، \lr{Serializer} و مسیرهای \lr{REST}.
+            \item کمک در مدل‌سازی اولیه و نوشتن اعتبارسنجی‌های کسب‌وکاری.
+            \item کمک مؤثر در تست‌نویسی و پوشش سناریوهای اصلی.
+        \end{itemize}
+    \item \textbf{ضعف‌ها}:
+        \begin{itemize}
+            \item احتمال خطای اولیه در قوانین دقیق \lr{RBAC} و چندنقشی.
+            \item نیاز به اصلاح دستی در سناریوهای \lr{stateful} چندمرحله‌ای.
+            \item نیاز به بازبینی امنیتی و پایداری برای محیط عملیاتی.
+        \end{itemize}
+\end{itemize}
+
+\subsection{نیازسنجی اولیه و نهایی پروژه}
+\begin{itemize}
+    \item \textbf{نیازسنجی اولیه}: پوشش نقش‌ها، ثبت پرونده، شواهد، تحلیل، محاکمه، پاداش، پرداخت. تمرکز روی پیاده‌سازی فنی.
+    \item \textbf{نیازسنجی نهایی}: تمرکز بیشتر روی گردش کار واقعی، مجوزهای دقیق، تجربه کاربری، تفکیک دقیق \lr{Complaint} و \lr{Case}، پشتیبانی از چندنقشی.
+    \item \textbf{نقاط قوت تصمیم‌ها}:
+        \begin{itemize}
+            \item معماری ماژولار \lr{app-by-app} در \lr{Django}.
+            \item \lr{RBAC} قابل تغییر بدون تغییر کد.
+            \item جداسازی واضح لایه‌ها در \lr{React}.
+        \end{itemize}
+    \item \textbf{نقاط ضعف تصمیم‌ها}:
+        \begin{itemize}
+            \item پیچیدگی بالا در مدیریت حالت‌های پرونده.
+            \item نیاز به تست‌های بیشتر برای سناریوهای مرزی.
+            \item وابستگی به تست دستی بیشتر در گردش‌کارهای طولانی.
+        \end{itemize}
+\end{itemize}
+
+\section{جمع‌بندی}
+سامانه با موفقیت با استفاده از \lr{Django + DRF + JWT} در بک‌اند و \lr{React + Vite} در فرانت‌اند پیاده‌سازی شد. تمام الزامات اصلی پروژه پوشش داده شد و بخش اختیاری پرداخت نیز به درگاه آزمایشی متصل گردید. پروژه برای توسعه‌های بعدی از جمله بهبود \lr{CI/CD}، افزایش تست‌های \lr{E2E} و ارتقای امنیت آماده است.
+
+\end{document}
