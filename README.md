@@ -10,13 +10,13 @@ Full-stack project scaffold based on your specification.
 - API docs: drf-spectacular Swagger
 
 ## Repository
-- `/Users/reza/Documents/sag/backend`
-- `/Users/reza/Documents/sag/frontend`
-- `/Users/reza/Documents/sag/docker-compose.yml`
+- `/projectRoot/backend`
+- `/projectRoot/frontend`
+- `/projectRoot/docker-compose.yml`
 
 ## Backend Run
 ```bash
-cd /Users/reza/Documents/sag/backend
+cd /projectRoot/backend
 python3 -m pip install -r requirements.txt
 python3 manage.py migrate
 python3 manage.py createsuperuser
@@ -26,7 +26,7 @@ python3 manage.py runserver
 
 ## Frontend Run
 ```bash
-cd /Users/reza/Documents/sag/frontend
+cd /projectRoot/frontend
 npm install
 npm run dev
 ```
@@ -42,7 +42,20 @@ python3 manage.py test accounts cases
 ```
 
 ## Docker
+using one docker image
 ```bash
 cd /PROJECT_DIR/
+docker compose up
+```
+
+using two docker image
+
+
+```bash
+cd /PROJECT_DIR/backend
+docker compose up
+```
+```bash
+cd /PROJECT_DIR/fronten
 docker compose up
 ```
