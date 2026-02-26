@@ -1,0 +1,26 @@
+# Fdb version 4
+["xdvipdfmx"] 0 "main.xdv" "main.pdf" "main" 0 -1
+  "main.xdv" 0 -1 0 "xelatex"
+  (generated)
+  "main.pdf"
+  (rewritten before read)
+["xelatex"] 1772141764.2121 "/home/arkadashsiz/Desktop/web proj/Latex_files/main.tex" "main.xdv" "main" 1772141764.4171 2
+  "/etc/texmf/web2c/texmf.cnf" 1772141280.03084 475 c0e671620eb5563b2130f56340a5fde8 ""
+  "/home/arkadashsiz/Desktop/web proj/Latex_files/main.tex" 1772141761.68017 19346 8c58c1551b08bb06ce127f5fa3813914 ""
+  "/usr/share/texlive/texmf-dist/tex/generic/iftex/iftex.sty" 1734129479 7984 7dbb9280f03c0a315425f1b4f35d43ee ""
+  "/usr/share/texlive/texmf-dist/tex/generic/iftex/ifvtex.sty" 1572645307 1057 525c2192b5febbd8c1f662c9468335bb ""
+  "/usr/share/texlive/texmf-dist/tex/latex/base/article.cls" 1738182759 20144 63d8bacaf52e5abf4db3bc322373e1d4 ""
+  "/usr/share/texlive/texmf-dist/tex/latex/base/size12.clo" 1738182759 8449 ffe4ba2166a344827c3a832d1d5e0a91 ""
+  "/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty" 1578002852 41601 9cf6c5257b1bc7af01a58859749dd37a ""
+  "/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty" 1717359999 2671 70891d50dac933918b827d326687c6e8 ""
+  "/usr/share/texlive/texmf-dist/web2c/texmf.cnf" 1741904018 41538 c016915c1d51223b6dbbfe27341748a8 ""
+  "/usr/share/texmf/web2c/texmf.cnf" 1741904018 41538 c016915c1d51223b6dbbfe27341748a8 ""
+  "/var/lib/texmf/web2c/xetex/xelatex.fmt" 1772141707 4096188 8b1e14bfbd507277ddc846eda7de5978 ""
+  "main.aux" 1772141756.21157 32 3985256e7290058c681f74d7a3565a19 "xelatex"
+  "main.tex" 1772141761.68017 19346 8c58c1551b08bb06ce127f5fa3813914 ""
+  "xepersian.sty" 0 -1 0 ""
+  (generated)
+  "main.aux"
+  "main.log"
+  "main.xdv"
+  (rewritten before read)
