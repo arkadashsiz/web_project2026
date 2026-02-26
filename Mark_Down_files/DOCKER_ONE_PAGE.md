@@ -49,13 +49,15 @@ Why:
 ## Commands
 Run full stack:
 ```bash
-docker compose up --build
+cd /project-root/
+docker compose up
 ```
 
 Run only one service:
 ```bash
-docker compose up --build backend
-docker compose up --build frontend
+cd /backend\|frontend
+docker compose up 
+docker compose up 
 ```
 
 Stop:

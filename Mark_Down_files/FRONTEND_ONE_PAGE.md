@@ -6,7 +6,7 @@
 3. React Router
 4. Axios
 
-Main folder: `/Users/reza/Documents/sag/frontend`
+Main folder: `/project-Root/frontend`
 
 ---
 
@@ -17,11 +17,11 @@ Key directories/files:
 3. `src/context/AuthContext` for auth state and user role context.
 4. `src/api/client` for Axios instance and API communication.
 5. `src/App.jsx` for route definitions.
-
+6. 'ThemeContext.jsx' for Theme control(dark/light theme).
 ---
 
 ## Main UI Concepts
-1. English UI as requested.
+1. English UI.
 2. Modular dashboard: modules shown based on user roles/permissions.
 3. Page-level workflow UI for each project section:
 - cases and complaints
@@ -63,7 +63,7 @@ Protected routes:
 ## Build and Run
 Dev mode:
 ```bash
-cd /Users/reza/Documents/sag/frontend
+cd /ProjectRoot/frontend
 npm install
 npm run dev -- --host
 ```
@@ -75,7 +75,7 @@ npm run build
 
 With Docker:
 ```bash
-cd /Users/reza/Documents/sag
+cd /ProjectRoot
 docker compose up --build frontend
 ```
 
