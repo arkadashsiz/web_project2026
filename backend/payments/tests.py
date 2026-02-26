@@ -43,3 +43,23 @@ class PaymentFlowTest(APITestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('amount', resp.data)
+
+    def test_create_options_returns_only_eligible_suspects(self):
+        # Eligible level-3 criminal
+        c2 = Case.objects.create(
+            title='Case P2', description='desc', source=Case.Source.SCENE, status=Case.Status.OPEN,
+            severity=Case.Severity.LEVEL_3, created_by=self.user,
+        )
+        s2 = Suspect.objects.create(case=c2, full_name='Sus C', national_id='1299', status=Suspect.Status.CRIMINAL)
+        # Not eligible (cleared)
+        c3 = Case.objects.create(
+            title='Case P3', description='desc', source=Case.Source.SCENE, status=Case.Status.OPEN,
+            severity=Case.Severity.LEVEL_2, created_by=self.user,
+        )
+        Suspect.objects.create(case=c3, full_name='Sus X', national_id='1399', status=Suspect.Status.CLEARED)
+
+        resp = self.client.get('/api/payments/bail/create_options/')
+        self.assertEqual(resp.status_code, 200)
+        suspect_ids = {x['id'] for x in resp.data['suspects']}
+        self.assertIn(self.suspect.id, suspect_ids)
+        self.assertIn(s2.id, suspect_ids)

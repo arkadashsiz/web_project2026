@@ -1,6 +1,7 @@
 from pathlib import Path
 from datetime import timedelta
 import importlib.util
+import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -126,4 +127,6 @@ ZARINPAL_STARTPAY_URL = 'https://sandbox.zarinpal.com/pg/StartPay/{authority}'
 ZARINPAL_SSL_VERIFY = False if DEBUG else True
 
 # Frontend URL used by payment callback template "Back To Main App" button.
-FRONTEND_APP_URL = 'http://localhost:5173'
+FRONTEND_APP_URL = os.getenv('FRONTEND_APP_URL', 'http://localhost:5173')
+# Public backend base URL used for links/callbacks that must be reachable from browser.
+BACKEND_PUBLIC_URL = os.getenv('BACKEND_PUBLIC_URL', 'http://localhost:8000')
