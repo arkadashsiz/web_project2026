@@ -41,6 +41,20 @@ export default function AdminRBACPage() {
     }
   }
 
+  const deleteRole = async (roleId, roleName) => {
+    setMsg('')
+    const ok = window.confirm(`Delete role "${roleName}" for all users?`)
+    if (!ok) return
+    try {
+      const res = await api.delete(`/rbac/roles/${roleId}/`)
+      const removed = res?.data?.removed_user_roles ?? 0
+      setMsg(`Role "${roleName}" deleted. Removed from ${removed} user assignment(s).`)
+      await load()
+    } catch (err) {
+      setMsg(err?.response?.data?.detail || 'Failed to delete role.')
+    }
+  }
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <div className="two-col">
@@ -67,7 +81,12 @@ export default function AdminRBACPage() {
         <div className="panel">
           <h3>Role List</h3>
           <ul className="list">
-            {roles.map((r) => <li key={r.id}>{r.name}</li>)}
+            {roles.map((r) => (
+              <li key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span>{r.name}</span>
+                <button type="button" onClick={() => deleteRole(r.id, r.name)}>Delete Role</button>
+              </li>
+            ))}
           </ul>
         </div>
         <div className="panel">

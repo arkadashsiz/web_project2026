@@ -14,6 +14,7 @@ import AdminRBACPage from './pages/AdminRBACPage'
 import RewardsPage from './pages/RewardsPage'
 import JudiciaryPage from './pages/JudiciaryPage'
 import PaymentsPage from './pages/PaymentsPage'
+import NotificationsPage from './pages/NotificationsPage'
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
       <Route path="/high-alert" element={<ProtectedRoute><Layout><HighAlertPage /></Layout></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute><Layout><ReportsPage /></Layout></ProtectedRoute>} />
       <Route path="/rewards" element={<ProtectedRoute><Layout><RewardsPage /></Layout></ProtectedRoute>} />
+      <Route path="/notifications" element={<ProtectedRoute><Layout><NotificationsPage /></Layout></ProtectedRoute>} />
       <Route path="/judiciary" element={<ProtectedRoute><Layout><JudiciaryPage /></Layout></ProtectedRoute>} />
       <Route path="/payments" element={<ProtectedRoute><Layout><PaymentsPage /></Layout></ProtectedRoute>} />
       <Route path="/admin-rbac" element={<ProtectedRoute><Layout><AdminRBACPage /></Layout></ProtectedRoute>} />

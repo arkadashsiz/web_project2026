@@ -9,16 +9,30 @@
     .box { max-width: 640px; margin: 60px auto; background: #fff; padding: 24px; border-radius: 10px; }
     .ok { color: #0a7d1c; }
     .fail { color: #b20d0d; }
+    .btn {
+      display: inline-block;
+      margin-top: 14px;
+      background: #0b63ce;
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 14px;
+      border-radius: 8px;
+    }
   </style>
 </head>
 <body>
   <div class="box">
     <h1>Payment Return Page</h1>
+    <p>Payment ID: <strong>{{ payment_id|default:"N/A" }}</strong></p>
+    <p>Authority: <strong>{{ authority|default:"N/A" }}</strong></p>
+    <p>Amount: <strong>{{ amount|default:"N/A" }}</strong></p>
     <p>Payment Reference: <strong>{{ payment_ref|default:"N/A" }}</strong></p>
     <p class="{% if result == 'success' %}ok{% else %}fail{% endif %}">
       Gateway Result: {{ result|default:"unknown" }}
     </p>
-    <p>You can close this page and return to the app.</p>
+    <p>{{ message|default:"" }}</p>
+    <a class="btn" href="{{ frontend_return_url }}">Back To Main App</a>
+    <p>You can close this page if you returned already.</p>
   </div>
 </body>
 </html>

@@ -27,7 +27,10 @@ export default function Layout({ children }) {
 
   const navLinks = useMemo(() => {
     if (!user) return []
-    const links = [{ key: 'dashboard', title: 'Dashboard', path: '/dashboard' }]
+    const links = [
+      { key: 'dashboard', title: 'Dashboard', path: '/dashboard' },
+      { key: 'notifications', title: 'Notifications', path: '/notifications' },
+    ]
     for (const m of modules) {
       if (!m?.path || !m?.title) continue
       if (!links.find((x) => x.path === m.path)) links.push({ key: m.key || m.path, title: m.title, path: m.path })
