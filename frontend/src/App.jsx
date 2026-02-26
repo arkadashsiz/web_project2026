@@ -1,49 +1,39 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Register from "./pages/Register";
-import DetectiveBoard from "./pages/DetectiveBoard";
-import SergeantPanel from "./pages/SergeantPanel";
-import ProtectedRoute from "./components/ProtectedRoute";
+import { Navigate, Route, Routes } from 'react-router-dom'
+import Layout from './components/Layout'
+import ProtectedRoute from './components/ProtectedRoute'
+import HomePage from './pages/HomePage'
+import LoginPage from './pages/LoginPage'
+import RegisterPage from './pages/RegisterPage'
+import DashboardPage from './pages/DashboardPage'
+import CasesPage from './pages/CasesPage'
+import EvidencePage from './pages/EvidencePage'
+import BoardPage from './pages/BoardPage'
+import HighAlertPage from './pages/HighAlertPage'
+import ReportsPage from './pages/ReportsPage'
+import AdminRBACPage from './pages/AdminRBACPage'
+import RewardsPage from './pages/RewardsPage'
+import JudiciaryPage from './pages/JudiciaryPage'
+import PaymentsPage from './pages/PaymentsPage'
+import NotificationsPage from './pages/NotificationsPage'
 
-function App() {
-    return (
-        <Router>
-            <Routes>
-            <Route path="/" element={<Login />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-
-                <Route
-                    path="/dashboard"
-                    element={
-                        <ProtectedRoute>
-                            <Dashboard />
-                        </ProtectedRoute>
-                    }
-                />
-
-                <Route
-                    path="/detective"
-                    element={
-                        <ProtectedRoute allowedRoles={["Detective"]}>
-                            <DetectiveBoard />
-                        </ProtectedRoute>
-                    }
-                />
-
-                <Route
-                    path="/sergeant"
-                    element={
-                        <ProtectedRoute allowedRoles={["Sergeant"]}>
-                            <SergeantPanel />
-                        </ProtectedRoute>
-                    }
-                />
-
-            </Routes>
-        </Router>
-    );
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/" element={<Layout><HomePage /></Layout>} />
+      <Route path="/dashboard" element={<ProtectedRoute><Layout><DashboardPage /></Layout></ProtectedRoute>} />
+      <Route path="/cases" element={<ProtectedRoute><Layout><CasesPage /></Layout></ProtectedRoute>} />
+      <Route path="/evidence" element={<ProtectedRoute><Layout><EvidencePage /></Layout></ProtectedRoute>} />
+      <Route path="/board" element={<ProtectedRoute><Layout><BoardPage /></Layout></ProtectedRoute>} />
+      <Route path="/high-alert" element={<ProtectedRoute><Layout><HighAlertPage /></Layout></ProtectedRoute>} />
+      <Route path="/reports" element={<ProtectedRoute><Layout><ReportsPage /></Layout></ProtectedRoute>} />
+      <Route path="/rewards" element={<ProtectedRoute><Layout><RewardsPage /></Layout></ProtectedRoute>} />
+      <Route path="/notifications" element={<ProtectedRoute><Layout><NotificationsPage /></Layout></ProtectedRoute>} />
+      <Route path="/judiciary" element={<ProtectedRoute><Layout><JudiciaryPage /></Layout></ProtectedRoute>} />
+      <Route path="/payments" element={<ProtectedRoute><Layout><PaymentsPage /></Layout></ProtectedRoute>} />
+      <Route path="/admin-rbac" element={<ProtectedRoute><Layout><AdminRBACPage /></Layout></ProtectedRoute>} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
 }
-
-export default App;
