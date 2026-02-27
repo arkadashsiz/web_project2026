@@ -45,13 +45,11 @@ class PaymentFlowTest(APITestCase):
         self.assertIn('amount', resp.data)
 
     def test_create_options_returns_only_eligible_suspects(self):
-        # Eligible level-3 criminal
         c2 = Case.objects.create(
             title='Case P2', description='desc', source=Case.Source.SCENE, status=Case.Status.OPEN,
             severity=Case.Severity.LEVEL_3, created_by=self.user,
         )
         s2 = Suspect.objects.create(case=c2, full_name='Sus C', national_id='1299', status=Suspect.Status.CRIMINAL)
-        # Not eligible (cleared)
         c3 = Case.objects.create(
             title='Case P3', description='desc', source=Case.Source.SCENE, status=Case.Status.OPEN,
             severity=Case.Severity.LEVEL_2, created_by=self.user,

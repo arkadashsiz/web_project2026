@@ -61,7 +61,6 @@ class TipViewSet(viewsets.ModelViewSet):
     def case_options(self, request):
         if not has_action(request.user, 'tip.submit'):
             return Response({'detail': 'No permission'}, status=403)
-        # Keep this endpoint limited to tip-submit context only.
         rows = Case.objects.filter(
             status__in=[Case.Status.OPEN, Case.Status.INVESTIGATING, Case.Status.SENT_TO_COURT]
         ).order_by('-updated_at')[:300]
@@ -126,7 +125,6 @@ class TipViewSet(viewsets.ModelViewSet):
             claim, _ = RewardClaim.objects.get_or_create(tip=tip)
             claim.amount = int(request.data.get('amount', 50_000_000))
             claim.save(update_fields=['amount'])
-            # Do not expose reward code in detective response.
             return Response({'tip': self.get_serializer(tip).data})
         tip.status = Tip.Status.REJECTED
         tip.save(update_fields=['status', 'detective_note'])
@@ -139,7 +137,6 @@ class RewardClaimViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Only tip submitter can see their own claim records and unique codes.
         return self.queryset.filter(tip__submitter=self.request.user)
 
     @decorators.action(detail=False, methods=['post'])

@@ -118,15 +118,11 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
 
-# Zarinpal sandbox defaults
 ZARINPAL_MERCHANT_ID = '123e4567-e89b-12d3-a456-426614174000'
 ZARINPAL_REQUEST_URL = 'https://sandbox.zarinpal.com/pg/v4/payment/request.json'
 ZARINPAL_VERIFY_URL = 'https://sandbox.zarinpal.com/pg/v4/payment/verify.json'
 ZARINPAL_STARTPAY_URL = 'https://sandbox.zarinpal.com/pg/StartPay/{authority}'
-# Keep True in production
 ZARINPAL_SSL_VERIFY = False if DEBUG else True
 
-# Frontend URL used by payment callback template "Back To Main App" button.
 FRONTEND_APP_URL = os.getenv('FRONTEND_APP_URL', 'http://localhost:5173')
-# Public backend base URL used for links/callbacks that must be reachable from browser.
 BACKEND_PUBLIC_URL = os.getenv('BACKEND_PUBLIC_URL', 'http://localhost:8000')

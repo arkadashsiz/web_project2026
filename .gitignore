@@ -45,3 +45,4 @@ pnpm-debug.log*
 # Misc
 *.tmp
 *.temp
+temp

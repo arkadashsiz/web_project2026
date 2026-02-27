@@ -17,10 +17,8 @@ class Command(BaseCommand):
         phone = os.getenv('DJANGO_SUPERUSER_PHONE', '09120000000').strip()
         national_id = os.getenv('DJANGO_SUPERUSER_NATIONAL_ID', '1000000000').strip()
 
-        # First preference: exact username.
         user = User.objects.filter(username=username).first()
 
-        # Fallback: any user with one of unique identifiers.
         if not user:
             user = User.objects.filter(
                 Q(national_id=national_id) | Q(email=email) | Q(phone=phone)
@@ -28,7 +26,6 @@ class Command(BaseCommand):
 
         if user:
             changed = False
-            # Keep existing unique fields if they differ to avoid creating collisions.
             if not user.is_superuser:
                 user.is_superuser = True
                 changed = True

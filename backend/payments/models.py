@@ -11,7 +11,6 @@ class BailPayment(models.Model):
     case = models.ForeignKey('cases.Case', on_delete=models.CASCADE)
     suspect = models.ForeignKey('investigation.Suspect', on_delete=models.CASCADE)
     amount = models.BigIntegerField()
-    # For level 3 criminals, sergeant must explicitly approve release-by-payment.
     sergeant_approved = models.BooleanField(default=False)
     authority = models.CharField(max_length=64, blank=True)
     gateway_status = models.CharField(max_length=50, blank=True)
