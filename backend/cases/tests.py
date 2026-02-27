@@ -137,7 +137,6 @@ class CasesFlowTest(APITestCase):
         }, format='json').data
         cid = created['id']
 
-        # Non-superior (same rank police officer) cannot approve
         same_rank = User.objects.create_user(
             username='same_rank',
             password='VeryStrong123',
@@ -150,7 +149,6 @@ class CasesFlowTest(APITestCase):
         denied = self.client.post(f'/api/cases/cases/{cid}/approve_scene/', {}, format='json')
         self.assertEqual(denied.status_code, 403)
 
-        # Direct superior (sergeant) can approve
         sergeant = User.objects.create_user(
             username='serg_scene',
             password='VeryStrong123',

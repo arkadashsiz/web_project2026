@@ -53,7 +53,6 @@ class BiologicalEvidenceSerializer(EvidenceBaseValidationMixin, serializers.Mode
         if not isinstance(image_urls, list) or len(image_urls) == 0:
             raise serializers.ValidationError({'image_urls': 'At least one image is required for biological evidence.'})
 
-        # Results must stay empty at creation and can only be filled via dedicated forensic endpoint.
         allow_results_update = self.context.get('allow_results_update', False)
         has_forensic = 'forensic_result' in attrs and (attrs.get('forensic_result') or '').strip() != ''
         has_identity = 'identity_db_result' in attrs and (attrs.get('identity_db_result') or '').strip() != ''
