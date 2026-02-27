@@ -10,7 +10,6 @@ class TipSerializer(serializers.ModelSerializer):
         if not claim:
             return None
         request = self.context.get('request')
-        # Reward code visibility must be limited to the tip submitter only.
         if not request or request.user.id != obj.submitter_id:
             return None
         return {

@@ -277,7 +277,6 @@ class InterrogationFlowTests(APITestCase):
         }, format='json')
         self.assertEqual(created.status_code, 200)
 
-        # Other detective cannot score this case.
         self.client.force_authenticate(self.other_detective)
         denied_det = self.client.post('/api/investigation/interrogations/record_assessment/', {
             'case_id': self.case.id,
@@ -286,7 +285,6 @@ class InterrogationFlowTests(APITestCase):
         }, format='json')
         self.assertEqual(denied_det.status_code, 403)
 
-        # Other sergeant cannot score this case (not case sergeant reviewer).
         self.client.force_authenticate(self.other_sergeant)
         denied_ser = self.client.post('/api/investigation/interrogations/record_assessment/', {
             'case_id': self.case.id,

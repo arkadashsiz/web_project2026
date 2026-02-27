@@ -71,8 +71,6 @@ class BailPaymentViewSet(viewsets.ModelViewSet):
     def check_object_permissions(self, request, obj):
         super().check_object_permissions(request, obj)
         if self.action == 'start_gateway':
-            # Payment start must be done by the suspect account (or superuser),
-            # not by the sergeant/manager who created the payment record.
             if request.user.is_superuser or self._is_related_suspect(request.user, obj):
                 return
             self.permission_denied(request, message='Only suspect can start gateway payment')
@@ -93,11 +91,9 @@ class BailPaymentViewSet(viewsets.ModelViewSet):
         if suspect.case_id != case.id:
             raise ValidationError('Suspect must belong to selected case.')
 
-        # Arrested suspects of level 2/3 can be released via payment.
         if suspect.status == Suspect.Status.ARRESTED:
             if case.severity not in [Case.Severity.LEVEL_2, Case.Severity.LEVEL_3]:
                 raise ValidationError('Only level 2 and level 3 arrested suspects are eligible for bail/fine release.')
-        # Level 3 criminals can be released only if sergeant approved.
         elif suspect.status == Suspect.Status.CRIMINAL:
             if case.severity != Case.Severity.LEVEL_3:
                 raise ValidationError('Only level 3 criminals are eligible for release by fine.')
@@ -154,7 +150,6 @@ class BailPaymentViewSet(viewsets.ModelViewSet):
         if int(obj.amount) < 1000:
             return Response({'detail': 'Amount must be at least 1000 for Zarinpal.'}, status=400)
 
-        # Keep payload aligned with Zarinpal sample flow to avoid 422 payload validation issues.
         payload = {
             'merchant_id': merchant_id,
             'amount': int(obj.amount),

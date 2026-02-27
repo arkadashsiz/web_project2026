@@ -91,14 +91,12 @@ class EvidenceFlowTests(APITestCase):
         self.assertEqual(created.status_code, 201)
         evidence_id = created.data['id']
 
-        # evidence manager cannot update forensic results
         denied = self.client.post(f'/api/evidence/biological/{evidence_id}/update_results/', {
             'forensic_result': 'DNA matched with suspect #12',
             'identity_db_result': 'Fingerprint record found in national DB',
         }, format='json')
         self.assertEqual(denied.status_code, 403)
 
-        # forensic/coroner can update
         forensic = User.objects.create_user(
             username='forensic_user',
             password='Strong12345',

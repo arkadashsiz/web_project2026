@@ -67,7 +67,6 @@ class DetectiveBoardViewSet(viewsets.ModelViewSet):
             board.nodes.values_list('kind', 'reference_id', 'label')
         )
 
-        # Layout counters for new nodes only.
         x = 80
         y = 80
 
@@ -131,7 +130,6 @@ class DetectiveBoardViewSet(viewsets.ModelViewSet):
             board.detective = request.user
             board.save(update_fields=['detective', 'updated_at'])
 
-        # Sync missing suspect/evidence cards every time board is opened.
         self._sync_board_nodes(board, case)
 
         context = {
@@ -422,7 +420,6 @@ class InterrogationViewSet(viewsets.ModelViewSet):
             interrogation.key_values = kv
             changed_fields.append('key_values')
 
-        # Only the assigned detective of this case can set detective scoring.
         if wants_detective_update:
             if not require_action(request.user, 'investigation.board.manage'):
                 return Response({'detail': 'No permission for detective scoring.'}, status=403)
@@ -447,7 +444,6 @@ class InterrogationViewSet(viewsets.ModelViewSet):
                 interrogation.detective = request.user
                 changed_fields.append('detective')
 
-        # Only the sergeant who reviewed/approved main suspects for this case can set sergeant scoring.
         if wants_sergeant_update:
             if not require_action(request.user, 'suspect.manage'):
                 return Response({'detail': 'No permission for sergeant scoring.'}, status=403)
@@ -479,7 +475,6 @@ class InterrogationViewSet(viewsets.ModelViewSet):
                 changed_fields.append('sergeant')
 
         if changed_fields:
-            # If captain had previously rejected, any new reassessment starts a fresh captain cycle.
             if interrogation.captain_outcome == Interrogation.CaptainOutcome.REJECTED and (
                 wants_detective_update or wants_sergeant_update
             ):
@@ -500,7 +495,6 @@ class InterrogationViewSet(viewsets.ModelViewSet):
                 ])
             interrogation.save(update_fields=list(set(changed_fields)))
 
-        # Notify captains after both detective/sergeant scores are available.
         if (
             interrogation.detective_submitted
             and interrogation.sergeant_submitted
@@ -602,7 +596,6 @@ class InterrogationViewSet(viewsets.ModelViewSet):
             obj.case.status = Case.Status.SENT_TO_COURT
             obj.case.save(update_fields=['status', 'updated_at'])
         else:
-            # Chief rejection returns the flow to captain decision.
             obj.captain_decision = Interrogation.CaptainDecision.PENDING
             obj.captain_outcome = Interrogation.CaptainOutcome.PENDING
             obj.captain_score = None
